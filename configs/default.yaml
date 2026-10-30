@@ -1,0 +1,42 @@
+seed: 42
+
+data:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  relevance_threshold: 4.0
+  minimum_positive_interactions: 3
+
+matrix_factorization:
+  latent_dimensions: 50
+  learning_rate: 0.005
+  regularization: 0.01
+  epochs: 50
+  batch_size: 1024
+  patience: 5
+
+hybrid:
+  alpha_values: [0.0, 0.25, 0.5, 0.75, 1.0]
+  top_k_candidates: 20
+
+evaluation:
+  k_values: [5, 10]
+  llm_sample_users: 100
+  bootstrap_resamples: 1000
+
+llm:
+  model: qwen35-27b
+  temperature: 0.0
+  requests_per_minute: 6
+  concurrency: 1
+  request_timeout_seconds: 100
+  maximum_retries: 3
+  retry_base_seconds: 2
+  maximum_candidates: 20
+  maximum_positive_history: 10
+  maximum_negative_history: 5
+
+# Extra settings. They have defaults in code if this file is trimmed to the
+# required keys above.
+artifacts_dir: artifacts
+popularity:
+  prior_strength: 10

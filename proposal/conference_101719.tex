@@ -1,0 +1,191 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+
+\begin{document}
+
+\title{Hybrid Movie Recommendation Using Matrix Factorization and LLM-Based Reranking}
+
+\author{\IEEEauthorblockN{1\textsuperscript{st} Sarthak Mishra}
+\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+\textit{Arizona State University}\\
+City, Country \\
+smish147@asu.edu}
+\and
+\IEEEauthorblockN{2\textsuperscript{nd} Siddanagouda Patil}
+\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+\textit{Arizona State University}\\
+City, Country \\
+email}
+\and
+\IEEEauthorblockN{3\textsuperscript{rd} Travis Andring}
+\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+\textit{Arizona State University}\\
+City, Country \\
+email}
+\and
+\IEEEauthorblockN{4\textsuperscript{th} Shashwat Dwivedi}
+\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+\textit{Arizona State University}\\
+City, Country \\
+email}
+\and
+\IEEEauthorblockN{5\textsuperscript{th} Dhanashree Somani}
+\IEEEauthorblockA{\textit{dept. name of organization (of Aff.)} \\
+\textit{Arizona State University}\\
+City, Country \\
+email}
+}
+
+\maketitle
+
+\begin{abstract}
+This proposal studies whether a large language model can improve movie recommendations that already come from a classical hybrid ranker. The study uses MovieLens 100K and compares popularity, biased matrix factorization, genre-based content filtering, and a hybrid of factorization and content. The language model is not trained and does not score the full catalog. It only reranks a short list of unseen candidates and may write a one-sentence explanation. Ranking metrics on a per-user chronological split are primary. A result in which reranking does not help is an acceptable outcome. The same pipeline must keep working when the language-model service is unavailable.
+\end{abstract}
+
+\begin{IEEEkeywords}
+movie recommendation, matrix factorization, content-based filtering, hybrid ranking, large language models, MovieLens
+\end{IEEEkeywords}
+
+\section{Problem Definition}
+People do not experience a recommender as a rating predictor. They see a short ranked list. A system can therefore have a low rating error and still place the movie a person would have liked far down that list. This project asks a ranking question: can large-language-model reranking improve the relevance, diversity, or interpretability of recommendations produced by a traditional hybrid movie recommender? Three recurring failures set the design.
+
+\paragraph{The black-box problem}
+A latent-factor or neural ranker can score a movie highly and still give the user no reason for that suggestion \cite{he2017,wu2024}. The missing reason makes the list easy to ignore. This project writes a one-sentence explanation for each of the top five recommendations. The sentence may use only that user's training history and the movie's title, year, and genres. MovieLens has no cast or director fields, so a filter rejects any sentence that invents an actor, a director, a theme, or knowledge of the held-out label. A fixed template replaces a rejected or failed sentence. Ranking quality and explanation quality stay separate: a fluent sentence is not counted as a better hit \cite{wu2024}.
+
+\paragraph{The popularity-bias problem}
+Collaborative scores favor movies that already have many ratings \cite{steck2011}. The list then fills with widely rated titles, and movies with few ratings stay hard to find. This project keeps Bayesian and positive-count popularity as explicit baselines, so that tilt is measured rather than hidden inside a more complex model. The content ranker scores an unseen movie by genre similarity to the movies the user rated highly, which can raise a less-rated title that matches those genres. The hybrid mixes that score with biased matrix factorization. Coverage, genre diversity, average popularity, and novelty are reported for every system, and movies are split into a sparse tail, a middle band, and a popular head. The language model may reorder only the hybrid's short candidate list. A diversity gain is claimed only when those catalog metrics move.
+
+\paragraph{The cold-start problem}
+A new user has no factorization embedding, and a movie with almost no ratings has a weak collaborative signal \cite{burke2002,yao2014}. For a demo user with no trained embedding, the hybrid replaces the factorization term with the Bayesian popularity prior, and the interface labels that list as a cold-start ranking. When the user has a few positive ratings, the content profile supplies a personalized genre score. A secondary check truncates each profile to the earliest three positive ratings so the sparse-history case is measured on its own. Every catalog movie still receives an item vector, including movies that never appear in training, so a rarely rated movie can be scored once a user vector exists.
+
+The study separates candidate generation from reranking. Classical models nominate a small set of unseen movies. The language model may reorder only that set, and it must return every candidate exactly once. Held-out ratings are labels for evaluation. They are not features, and they are not shown to the model. Asking the language model to score the full catalog would be expensive and hard to reproduce, so the classical ranker discards most of the catalog first.
+
+Success is not defined as a higher score for the language-model condition. The comparison is fair only if every system is scored on the same users, with the same candidate sets for the reranking comparison, and with uncertainty reported at the user level. An offline hit means that a movie later rated highly was ranked near the top. That is a relevance proxy. It is not evidence that a person would be satisfied. A production language-model ranker can report online gains on a private catalog \cite{li2026}, and those gains stay tied to that catalog and its feedback loop \cite{bennett2007,herlocker2004}. This study measures the same kind of question again on public MovieLens ratings.
+
+\section{Data Sets}
+The only dataset is MovieLens 100K from GroupLens \cite{harper2015}. It contains 100{,}000 ratings from 943 users on 1{,}682 movies, collected from September 1997 through April 1998. Each user has at least 20 ratings. Ratings are integers from 1 to 5. The rating file records user id, movie id, rating, and a Unix timestamp. The movie file is the original pipe-delimited release, read as Latin-1, with title, release date, and 19 multi-hot genre flags from ``unknown'' through ``Western.'' Release year is taken from the parenthetical year in the title when that pattern is present, and otherwise from the release date.
+
+A rating of 4 or 5 is treated as relevant. For each user, interactions are sorted by time. The latest relevant movie is the test item, and the second-latest relevant movie is the validation item. Training uses only interactions that occur strictly before the validation item. Users with fewer than three relevant training ratings are removed. Ratings that fall between validation and test, or after the test item, are discarded rather than used as either features or labels. This chronological, leave-one-out design follows the warning that a random split leaks future interactions into training \cite{campos2014}.
+
+The processed data are checked for duplicate user--movie pairs, ratings outside 1 to 5, unparseable timestamps, inconsistent identifiers, and genre vectors of dimension 19. Automated tests check that no validation or test interaction appears in matrix-factorization training, in the genre profile, or in a language-model prompt. The public release is not copied into version control. A download script can retrieve it from the official GroupLens URL when a local copy is absent.
+
+These data have known limits. They are anonymous historical ratings, not a private profile, and they cannot support claims about actors or directors. They also cannot show the feedback loop that appears when a deployed ranker changes which movies are rated next \cite{steck2011}.
+
+\section{State-of-the-Art Methods and Algorithms}
+Classical recommender research already separates several families \cite{burke2002,herlocker2004}. A popularity ranker sorts by how often an item is consumed. Neighborhood collaborative filtering predicts from similar users or similar items. Matrix factorization compresses the rating matrix into latent user and item vectors. Biased matrix factorization adds a global mean and user and item biases, which accounts for the fact that some users rate high and some movies are rated high regardless of the match \cite{koren2008,koren2009}. Content-based filtering builds a user profile from item attributes. For movies, the usual attribute in this dataset is genre \cite{lops2011}. Hybrids combine collaborative and content scores because neither source is reliable for every user and every item \cite{burke2002}. When feedback is implicit rather than a 1-to-5 rating, side information from users and items can also regularize a one-class factorization and ease sparsity \cite{yao2014}. MovieLens supplies explicit ratings, so this project uses genres as a separate content score.
+
+Deep learning later replaced the inner product of factorization with a neural network, as in neural collaborative filtering \cite{he2017}. Those models can fit richer interactions, but they are harder to train on a small explicit-rating matrix, and they still do not by themselves explain a recommendation in ordinary language. This project keeps biased matrix factorization, implemented in PyTorch, as the collaborative model. The added capacity of a deep scorer is not the question under test. The modern component is a frozen large language model used as a zero-shot reranker.
+
+Recent work shows that a language model can order a candidate list for recommendation without task-specific training, while also showing that the order is sensitive to the prompt, the candidate set, and popularity \cite{hou2024,dai2023}. Surveys of language models for recommendation describe generation, scoring, and explanation as separate uses, and they warn against treating a fluent explanation as evidence of a better ranking \cite{wu2024}. At production scale, GenRec verbalizes member history and post-trains a foundation model to rank a full catalog \cite{li2026}. This project follows the smaller setting. The language model is not fine-tuned, is not asked for hidden chain-of-thought, and is not allowed to add movies that the hybrid ranker did not nominate.
+
+\section{Research Plan}
+The implementation is one local Python pipeline. It must produce recommendations with no language-model service at all. If the service is configured, live calls stay behind an explicit confirmation flag, a cache, a rate limit, and a call budget.
+
+\subsection{Classical recommenders}
+The popularity baseline is fit on training ratings only. One variant ranks by the count of relevant ratings. The other uses a Bayesian average that shrinks the observed mean toward the global training mean with a prior of ten pseudo-ratings. Movies already seen by the user are removed.
+
+Biased matrix factorization predicts a rating as
+\begin{equation}
+\hat{r}_{ui}=\mu+b_u+b_i+p_u^{\top}q_i,
+\end{equation}
+where \(\mu\) is the training-rating mean, \(b_u\) and \(b_i\) are biases, and \(p_u\) and \(q_i\) are latent vectors \cite{koren2009}. Training minimizes regularized squared error with mini-batch stochastic gradient descent. Early stopping watches validation ranking quality rather than rating error, because every validation label is a high rating and is therefore a poor match to training error. Rating error is still reported as a secondary metric. Every catalog movie receives an item vector, including movies that never appear in training, but a new demo user does not receive a fake user vector.
+
+The content model represents each movie by its 19-dimensional genre vector. A user profile is the weighted average of training movies, with weight \(\max(r_{ui}-3,0)\). A movie is scored by cosine similarity to that profile \cite{lops2011}. If the profile is empty, the score falls back to Bayesian popularity.
+
+The hybrid score min-max normalizes the factorization and content scores for each user, then combines them as
+\begin{equation}
+s_{\mathrm{hybrid}}(u,i)=\alpha s_{\mathrm{MF}}(u,i)+(1-\alpha)s_{\mathrm{content}}(u,i).
+\end{equation}
+The mixing weight \(\alpha\) is chosen from \(\{0, 0.25, 0.5, 0.75, 1\}\) by validation NDCG at 10. The chosen value is used once on the test set. The test set is not used to stop training or to pick \(\alpha\).
+
+\subsection{Language-model reranking and explanation}
+The tuned hybrid ranker proposes 20 unseen movies. Each record carries the title, year, genres, and the component scores used for analysis. The prompt itself contains titles, years, genres, and a compact training history: up to ten highest-rated movies, five lowest-rated movies, recent positive movies, and preferred genres. Numeric model scores and held-out labels are omitted. The prompt is kept near a few thousand tokens even though the available context window is much larger.
+
+The model must return JSON with a permutation of the candidate identifiers and a short user-facing rationale. The response is checked for valid JSON, membership in the candidate set, and a complete permutation. If the check fails, one repair request is sent. If repair also fails, valid returned identifiers are kept and the missing candidates are appended in hybrid order. If the request fails entirely, the hybrid order is unchanged. Explanations for the top five movies must be one sentence, must name the movie by identifier, and must not claim actors, directors, themes, certainty, or knowledge of the test label. A deterministic template replaces a failed or unsupported explanation.
+
+For a new demo user, the hybrid score uses the popularity prior in place of a factorization embedding, and the interface labels that list as a cold-start recommendation.
+
+\section{Evaluation Plan}
+The primary metrics are hit rate and recall at 5 and 10, normalized discounted cumulative gain at 5 and 10 \cite{jarvelin2002}, and mean reciprocal rank. Because each user has one relevant test item, recall at \(K\) equals hit rate at \(K\). Secondary catalog metrics are coverage, genre diversity as mean pairwise distance between genre vectors, average recommendation popularity, and novelty defined from the training frequency of each movie. Root-mean-square error and mean absolute error are saved only as secondary rating metrics.
+
+The systems under comparison are Bayesian popularity, positive-count popularity, biased matrix factorization, content filtering, the tuned hybrid, and hybrid candidates after language-model reranking. The reranking comparison uses the same sampled users and the same candidate sets. User-level paired differences get a bootstrap 95\% interval. That interval is not a \(p\)-value. The report also states how often the top recommendation changes, the average rank displacement, the invalid-response rate, the fallback rate, the cache-hit rate, the latency, and the approximate prompt size. A sample that is too small for a stable conclusion is described as such.
+
+Two further checks keep the result from being only an average. Movies are bucketed by training frequency into a sparse tail, a middle, and a popular head. A secondary check truncates content profiles to simulate users with little positive history. Lightweight ablations vary the hybrid weight, the candidate-list size, and whether the prompt contains highest-rated movies, recent positive movies, or both. The language-model condition is also compared with reranking disabled.
+
+Random seeds and the configuration file are stored with the outputs. Plots and tables are produced by scripts rather than by a notebook-only path. No test in the automated suite is allowed to call a live service.
+
+\section{Project Timeline}
+The work is planned as four weeks for a team of five. Table~\ref{tab:timeline} lists the tasks and the deadline for each week.
+
+\begin{table}[t]
+\caption{Four-week project timeline}
+\label{tab:timeline}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.12\columnwidth}p{0.62\columnwidth}p{0.16\columnwidth}@{}}
+\toprule
+Week & Task & Deadline \\
+\midrule
+1 & Parse MovieLens, validate identifiers and genres, build the chronological split, and add leakage tests. & End of week 1 \\
+2 & Implement popularity, biased matrix factorization, content profiles, hybrid tuning on validation, and offline ranking metrics. & End of week 2 \\
+3 & Add the provider-neutral client, cache, rate limit, prompts, repair, fallback, and a mock evaluation. & End of week 3 \\
+4 & Add popularity buckets, the cold-start demo, documentation, and a full training run if time allows. & End of week 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Week 1 is limited to data handling so that later models cannot silently train on future ratings. Week 2 finishes the classical comparison before any paid or rate-limited model call. Week 3 adds the language model behind a mock client, so the evaluation logic can be tested with the network disabled. Week 4 is for analysis, the demonstration interface, and the full factorization schedule. A short smoke run may be used earlier to check the pipeline, but smoke numbers are labeled as smoke numbers and are not the final comparison.
+
+\section{Division of Work}
+All five members are students at Arizona State University. Each person owns one part of the pipeline, and the test set stays unused until the owned models are finished. Table~\ref{tab:work} gives the assignment.
+
+\begin{table}[t]
+\caption{Division of work}
+\label{tab:work}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.38\columnwidth}p{0.56\columnwidth}@{}}
+\toprule
+Member & Responsibility \\
+\midrule
+Sarthak Mishra & MovieLens parsing, the chronological split, leakage tests, and integration of the full pipeline. \\
+Siddanagouda Patil & Bayesian and positive-count popularity, plus the genre content-based ranker. \\
+Travis Andring & Biased matrix factorization in PyTorch and validation selection of the hybrid weight. \\
+Shashwat Dwivedi & Language-model client, prompts, reranking, repair, cache, and fallback. \\
+Dhanashree Somani & Ranking metrics, plots, the demonstration interface, and the written comparison. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Sarthak Mishra leads week 1, Siddanagouda Patil and Travis Andring lead week 2, Shashwat Dwivedi leads week 3, and Dhanashree Somani leads week 4. Every member reviews the final user-level comparison, including a result in which reranking does not improve relevance.
+
+\section*{Acknowledgment}
+MovieLens 100K is distributed by GroupLens for research use \cite{harper2015}. The language-model service is accessed only through a local configuration file that is excluded from version control.
+
+\begin{thebibliography}{00}
+\bibitem{harper2015} F.~M. Harper and J.~A. Konstan, ``The MovieLens datasets: History and context,'' \emph{ACM Trans. Interact. Intell. Syst.}, vol.~5, no.~4, pp.~19:1--19:19, Dec. 2015.
+\bibitem{koren2009} Y. Koren, R. Bell, and C. Volinsky, ``Matrix factorization techniques for recommender systems,'' \emph{Computer}, vol.~42, no.~8, pp.~30--37, Aug. 2009.
+\bibitem{koren2008} Y. Koren, ``Factorization meets the neighborhood: A multifaceted collaborative filtering model,'' in \emph{Proc. 14th ACM SIGKDD Int. Conf. Knowledge Discovery and Data Mining}, 2008, pp.~426--434.
+\bibitem{burke2002} R. Burke, ``Hybrid recommender systems: Survey and experiments,'' \emph{User Modeling and User-Adapted Interaction}, vol.~12, no.~4, pp.~331--370, Nov. 2002.
+\bibitem{herlocker2004} J.~L. Herlocker, J.~A. Konstan, L.~G. Terveen, and J.~T. Riedl, ``Evaluating collaborative filtering recommender systems,'' \emph{ACM Trans. Inf. Syst.}, vol.~22, no.~1, pp.~5--53, Jan. 2004.
+\bibitem{jarvelin2002} K. J\"{a}rvelin and J. Kek\"{a}l\"{a}inen, ``Cumulated gain-based evaluation of IR techniques,'' \emph{ACM Trans. Inf. Syst.}, vol.~20, no.~4, pp.~422--446, Oct. 2002.
+\bibitem{lops2011} P. Lops, M. de Gemmis, and G. Semeraro, ``Content-based recommender systems: State of the art and trends,'' in \emph{Recommender Systems Handbook}, F. Ricci, L. Rokach, B. Shapira, and P.~B. Kantor, Eds. Boston, MA, USA: Springer, 2011, pp.~73--105.
+\bibitem{he2017} X. He, L. Liao, H. Zhang, L. Nie, X. Hu, and T.-S. Chua, ``Neural collaborative filtering,'' in \emph{Proc. 26th Int. Conf. World Wide Web}, 2017, pp.~173--182.
+\bibitem{hou2024} Y. Hou, J. Zhang, Z. Lin, H. Lu, R. Xie, J. McAuley, and W.~X. Zhao, ``Large language models are zero-shot rankers for recommender systems,'' in \emph{Proc. European Conf. Information Retrieval}, 2024, pp.~364--381.
+\bibitem{dai2023} S. Dai \emph{et al.}, ``Uncovering ChatGPT's capabilities in recommender systems,'' in \emph{Proc. 17th ACM Conf. Recommender Systems}, 2023, pp.~1126--1132.
+\bibitem{wu2024} L. Wu \emph{et al.}, ``A survey on large language models for recommendation,'' \emph{World Wide Web}, vol.~27, art.~60, 2024.
+\bibitem{steck2011} H. Steck, ``Item popularity and recommendation accuracy,'' in \emph{Proc. 5th ACM Conf. Recommender Systems}, 2011, pp.~125--132.
+\bibitem{campos2014} P.~G. Campos, F. D\'{i}ez, and I. Cantador, ``Time-aware recommender systems: A comprehensive survey and analysis of existing evaluation protocols,'' \emph{User Modeling and User-Adapted Interaction}, vol.~24, pp.~67--119, 2014.
+\bibitem{bennett2007} J. Bennett and S. Lanning, ``The Netflix Prize,'' in \emph{Proc. KDD Cup and Workshop}, 2007, pp.~3--6.
+\bibitem{li2026} Y. Li \emph{et al.}, ``GenRec: An LLM-backed recommendation ranker at Netflix,'' arXiv:2608.10257, Aug. 2026.
+\bibitem{yao2014} Y. Yao, H. Tong, G. Yan, F. Xu, X. Zhang, B.~K. Szymanski, and J. Lu, ``Dual-regularized one-class collaborative filtering,'' in \emph{Proc. 23rd ACM Int. Conf. Information and Knowledge Management}, Shanghai, China, 2014, pp.~759--768.
+\end{thebibliography}
+
+\end{document}

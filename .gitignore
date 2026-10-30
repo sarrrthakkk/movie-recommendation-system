@@ -1,0 +1,31 @@
+.env
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.DS_Store
+
+# Local dataset. MovieLens 100K is not redistributed with this project.
+ml-100k/
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.zip
+
+# Generated experiment outputs and the LLM response cache.
+artifacts/models/*
+artifacts/cache/*
+artifacts/metrics/*
+artifacts/plots/*
+!artifacts/models/.gitkeep
+!artifacts/cache/.gitkeep
+!artifacts/metrics/.gitkeep
+!artifacts/plots/.gitkeep
+
+.streamlit/secrets.toml
