@@ -112,6 +112,7 @@ class EvaluationConfig(BaseModel):
 class LLMConfig(BaseModel):
     model: str = "qwen35-27b"
     temperature: float = 0.0
+    max_tokens: int | None = 512
     requests_per_minute: int = 6
     concurrency: int = 1
     request_timeout_seconds: float = 90
@@ -120,6 +121,13 @@ class LLMConfig(BaseModel):
     maximum_candidates: int = 20
     maximum_positive_history: int = 10
     maximum_negative_history: int = 5
+
+    @field_validator("max_tokens")
+    @classmethod
+    def max_tokens_positive(cls, value: int | None) -> int | None:
+        if value is not None and value < 1:
+            raise ValueError("max_tokens must be at least 1")
+        return value
 
     @field_validator("temperature")
     @classmethod

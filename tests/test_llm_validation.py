@@ -22,7 +22,11 @@ from movie_recommender.llm.client import (
     TransientLLMError,
     request_interval_seconds,
 )
-from movie_recommender.llm.explanations import explain_movies, template_explanation
+from movie_recommender.llm.explanations import (
+    explain_movies,
+    extract_mentioned_genres,
+    template_explanation,
+)
 from movie_recommender.llm.prompts import build_rerank_messages, prompt_token_estimate
 from movie_recommender.llm.reranker import rerank_candidates
 from movie_recommender.llm.schemas import complete_ranking, parse_json_object, parse_rerank
@@ -324,3 +328,100 @@ def test_tracked_files_do_not_contain_a_filled_api_key():
             if line.startswith("LLM_API_KEY=") and line.strip() != "LLM_API_KEY=":
                 offenders.append(str(path))
     assert offenders == []
+
+
+def test_openai_client_max_tokens_handling():
+    captured = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    client_512 = OpenAICompatibleClient(
+        "test-key",
+        "https://example.test/v1",
+        timeout=5,
+        transport=httpx.MockTransport(handler),
+        max_tokens=512,
+    )
+    client_512.chat([{"role": "user", "content": "hi"}], model="qwen35-27b", temperature=0)
+    assert captured[0]["max_tokens"] == 512
+
+    client_none = OpenAICompatibleClient(
+        "test-key",
+        "https://example.test/v1",
+        timeout=5,
+        transport=httpx.MockTransport(handler),
+        max_tokens=None,
+    )
+    client_none.chat([{"role": "user", "content": "hi"}], model="qwen35-27b", temperature=0)
+    assert "max_tokens" not in captured[1]
+
+
+def test_explanation_genre_validation(tmp_path):
+    class MockChat:
+        def __init__(self, text: str):
+            self.text = text
+
+        def chat(self, messages, *, model, temperature, timeout=None):
+            return self.text
+
+    valid_resp = json.dumps({
+        "explanations": [
+            {
+                "movie_id": 12,
+                "explanation": "Movie 12 (Toy Story) is recommended because the user enjoys animation and comedy.",
+            }
+        ]
+    })
+    movies_toy_story = [{"movie_id": 12, "title": "Toy Story (1995)", "genres": "Animation|Comedy"}]
+    outcome_valid = explain_movies(_gateway(tmp_path / "valid", MockChat(valid_resp)), _profile(), movies_toy_story)
+    assert outcome_valid.fallback_reason == "none"
+    assert "animation and comedy" in outcome_valid.explanations[0]["explanation"]
+
+    horror_resp = json.dumps({
+        "explanations": [
+            {
+                "movie_id": 12,
+                "explanation": "Movie 12 (Toy Story) is an intense thriller and horror experience.",
+            }
+        ]
+    })
+    outcome_horror = explain_movies(_gateway(tmp_path / "horror", MockChat(horror_resp)), _profile(), movies_toy_story)
+    assert outcome_horror.fallback_reason == "hallucinated_genre"
+    assert outcome_horror.explanations[0]["explanation"] == template_explanation(12, "Toy Story (1995)", "Animation|Comedy")
+
+    scifi_resp = json.dumps({
+        "explanations": [
+            {
+                "movie_id": 5,
+                "explanation": "Movie 5 (Drama Film) explores science fiction themes.",
+            }
+        ]
+    })
+    movies_drama = [{"movie_id": 5, "title": "Drama Film (1995)", "genres": "Drama"}]
+    outcome_scifi = explain_movies(_gateway(tmp_path / "scifi", MockChat(scifi_resp)), _profile(), movies_drama)
+    assert outcome_scifi.fallback_reason == "hallucinated_genre"
+    assert outcome_scifi.explanations[0]["explanation"] == template_explanation(5, "Drama Film (1995)", "Drama")
+
+    unknown_resp = json.dumps({
+        "explanations": [
+            {
+                "movie_id": 12,
+                "explanation": "Movie 12 (Toy Story) has unknown charm but great animation.",
+            }
+        ]
+    })
+    outcome_unknown = explain_movies(_gateway(tmp_path / "unknown", MockChat(unknown_resp)), _profile(), movies_toy_story)
+    assert outcome_unknown.fallback_reason == "none"
+    assert "unknown charm" in outcome_unknown.explanations[0]["explanation"]
+
+
+def test_extract_mentioned_genres_aliases():
+    assert extract_mentioned_genres("A great sci-fi adventure") == {"Sci-Fi", "Adventure"}
+    assert extract_mentioned_genres("Classic science fiction drama") == {"Sci-Fi", "Drama"}
+    assert extract_mentioned_genres("Dark film-noir mystery") == {"Film-Noir", "Mystery"}
+    assert extract_mentioned_genres("Dark film noir mystery") == {"Film-Noir", "Mystery"}
+    assert extract_mentioned_genres("Fun for children's entertainment") == {"Children's"}
+    assert extract_mentioned_genres("Fun for children everywhere") == {"Children's"}
+    assert extract_mentioned_genres("An unknown plot with high tension") == set()

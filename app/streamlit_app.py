@@ -88,7 +88,7 @@ def build_gateway(live: bool):
         api_key, base_url, model_name = credentials
         timeout = 180.0
         retries = 1
-        client = OpenAICompatibleClient(api_key, base_url, timeout=timeout)
+        client = OpenAICompatibleClient(api_key, base_url, timeout=timeout, max_tokens=config.llm.max_tokens)
         interval = request_interval_seconds(config.llm.requests_per_minute)
     else:
         model_name = config.llm.model

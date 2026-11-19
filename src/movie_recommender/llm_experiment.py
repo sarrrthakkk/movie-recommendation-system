@@ -251,6 +251,7 @@ def _make_gateway(config: AppConfig, *, artifacts: Path, mock: bool, dry_run: bo
             api_key=api_key,
             base_url=base_url,
             timeout=config.llm.request_timeout_seconds,
+            max_tokens=config.llm.max_tokens,
         )
         interval = request_interval_seconds(config.llm.requests_per_minute)
         logger.info("Live LLM calls use a minimum spacing of %.1f seconds", interval)
