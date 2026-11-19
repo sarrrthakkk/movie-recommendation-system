@@ -91,6 +91,7 @@ class HybridConfig(BaseModel):
 class EvaluationConfig(BaseModel):
     k_values: list[int] = Field(default_factory=lambda: [5, 10])
     llm_sample_users: int = 100
+    stratify_sample_users: bool = True
     bootstrap_resamples: int = 1000
 
     @field_validator("k_values")

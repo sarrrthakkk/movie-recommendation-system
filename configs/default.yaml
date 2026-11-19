@@ -21,6 +21,7 @@ hybrid:
 evaluation:
   k_values: [5, 10]
   llm_sample_users: 100
+  stratify_sample_users: true
   bootstrap_resamples: 1000
 
 llm:

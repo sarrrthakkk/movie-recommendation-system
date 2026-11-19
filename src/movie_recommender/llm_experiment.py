@@ -11,6 +11,7 @@ import pandas as pd
 from movie_recommender.candidates import (
     build_candidate_records,
     build_prompt_profile,
+    sample_stratified_user_ids,
     sample_user_ids,
 )
 from movie_recommender.config import AppConfig
@@ -101,10 +102,33 @@ def run_llm_evaluation(
         result_type = f"{result_type}_mock_llm"
     n_sample = sample_users or config.evaluation.llm_sample_users
     eligible = data.test["user_id"].astype(int).to_numpy()
-    sampled = sample_user_ids(eligible, n_sample, config.seed)
+    if config.evaluation.stratify_sample_users:
+        sampled, user_tiers = sample_stratified_user_ids(
+            data.train, eligible, n_sample, config.seed
+        )
+    else:
+        sampled = sample_user_ids(eligible, n_sample, config.seed)
+        user_tiers = {}
     if len(sampled) == 0:
         raise RuntimeError("No eligible users are available for LLM evaluation. Prepare the split first.")
-    logger.info("LLM evaluation sample has %d users", len(sampled))
+    tier_counts = (
+        {
+            tier: int(sum(1 for u in sampled if user_tiers.get(int(u)) == tier))
+            for tier in ("low", "medium", "high")
+        }
+        if user_tiers
+        else {}
+    )
+    if tier_counts:
+        logger.info(
+            "LLM evaluation sample has %d users (stratified: low=%d, medium=%d, high=%d)",
+            len(sampled),
+            tier_counts["low"],
+            tier_counts["medium"],
+            tier_counts["high"],
+        )
+    else:
+        logger.info("LLM evaluation sample has %d users", len(sampled))
     movie_ids = data.movies["movie_id"].to_numpy()
     prepared = prepare_users(sampled.tolist(), data.train, movie_ids, mf, content, popularity)
     prepared_by_id = {user.user_id: user for user in prepared}
@@ -155,6 +179,8 @@ def run_llm_evaluation(
         )
         if dry_run:
             estimate["executed"] = False
+            estimate["user_tiers"] = user_tiers
+            estimate["sampled_tier_counts"] = tier_counts
             save_json(metrics_dir / "llm_estimate.json", estimate)
             return estimate
         if not mock and llm_credentials() is None:
@@ -197,6 +223,8 @@ def run_llm_evaluation(
             mock=mock,
             result_type=result_type,
             estimate=estimate,
+            user_tiers=user_tiers,
+            tier_counts=tier_counts,
         )
     finally:
         _close_client(live_client)
@@ -317,6 +345,8 @@ def _execute(
     mock: bool,
     result_type: str,
     estimate: dict,
+    user_tiers: dict[int, str] | None = None,
+    tier_counts: dict[str, int] | None = None,
 ) -> dict:
     genre_by_movie = {
         int(movie_id): data.genres[row] for row, movie_id in enumerate(data.movies["movie_id"].astype(int))
@@ -453,6 +483,8 @@ def _execute(
         seed=config.seed + 1,
     )
     detail = pd.DataFrame(primary_rows).merge(merged, on="user_id")
+    if user_tiers:
+        detail["user_tier"] = detail["user_id"].map(user_tiers)
     detail.to_csv(metrics_dir / "llm_per_user.csv", index=False)
     total_requests = gateway.cache_hits + gateway.cache_misses
     result = {
@@ -461,6 +493,9 @@ def _execute(
         "prompt_version": PROMPT_VERSION,
         "seed": config.seed,
         "n_users": int(len(sampled)),
+        "user_tiers": user_tiers or {},
+        "sampled_tier_counts": tier_counts or {},
+        "tier_counts": tier_counts or {},
         "selected_alpha": alpha,
         "estimate": estimate,
         "hybrid_on_sample": hybrid_summary,
