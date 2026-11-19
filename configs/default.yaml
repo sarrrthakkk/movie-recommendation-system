@@ -22,6 +22,7 @@ evaluation:
   k_values: [5, 10]
   llm_sample_users: 100
   stratify_sample_users: true
+  explanation_audit_samples: 50
   bootstrap_resamples: 1000
 
 llm:

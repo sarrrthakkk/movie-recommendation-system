@@ -41,9 +41,18 @@ def _from_result(result: GenerationResult, candidates: list[int]) -> tuple[list[
     return completed, exact, summary
 
 
-def rerank_candidates(gateway: LLMGateway, profile: dict, candidates: list[dict]) -> RerankOutcome:
-    """Rerank ``candidates`` which must already be in hybrid-score order."""
-    original = _hybrid_ids(candidates)
+def rerank_candidates(
+    gateway: LLMGateway,
+    profile: dict,
+    candidates: list[dict],
+    original_candidates: list[dict] | None = None,
+) -> RerankOutcome:
+    """Rerank ``candidates``.
+
+    If ``original_candidates`` is supplied, it provides the canonical hybrid order
+    used for membership validation, error fallbacks, and completing partial permutations.
+    """
+    original = _hybrid_ids(original_candidates if original_candidates is not None else candidates)
     messages = build_rerank_messages(profile, candidates)
     prompt_tokens = prompt_token_estimate(messages)
     if prompt_tokens > TOKEN_WARNING_THRESHOLD:

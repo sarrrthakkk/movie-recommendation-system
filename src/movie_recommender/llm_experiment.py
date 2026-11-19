@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 from pathlib import Path
 
@@ -29,7 +30,7 @@ from movie_recommender.llm.client import (
     llm_credentials,
     request_interval_seconds,
 )
-from movie_recommender.llm.explanations import explain_movies
+from movie_recommender.llm.explanations import explain_movies, template_explanation
 from movie_recommender.llm.prompts import PROMPT_VERSION, build_rerank_messages, prompt_token_estimate
 from movie_recommender.llm.reranker import rerank_candidates
 from movie_recommender.models.content_based import ContentModel
@@ -75,6 +76,7 @@ def run_llm_evaluation(
     run_ablations: bool | None = None,
     explanations: bool = False,
     sample_users: int | None = None,
+    explanation_audit_samples: int | None = None,
     processed_dir: str | Path | None = None,
     artifacts_dir: str | Path | None = None,
     device: str | None = None,
@@ -141,16 +143,61 @@ def run_llm_evaluation(
             raise RuntimeError(f"Held-out interaction leaked into the prompt history for user {user_id}")
 
     candidate_limit = min(config.hybrid.top_k_candidates, config.llm.maximum_candidates)
-    jobs = [{"name": "llm_combined", "history_mode": "combined", "k": candidate_limit, "primary": True}]
+    jobs = [
+        {
+            "name": "llm_combined",
+            "history_mode": "combined",
+            "k": candidate_limit,
+            "candidate_order": "hybrid",
+            "primary": True,
+        }
+    ]
     if run_ablations:
         if 10 not in {candidate_limit}:
-            jobs.append({"name": "llm_candidates_10", "history_mode": "combined", "k": min(10, candidate_limit), "primary": False})
+            jobs.append({
+                "name": "llm_candidates_10",
+                "history_mode": "combined",
+                "k": min(10, candidate_limit),
+                "candidate_order": "hybrid",
+                "primary": False,
+            })
         elif candidate_limit != 10:
-            jobs.append({"name": "llm_candidates_10", "history_mode": "combined", "k": 10, "primary": False})
+            jobs.append({
+                "name": "llm_candidates_10",
+                "history_mode": "combined",
+                "k": 10,
+                "candidate_order": "hybrid",
+                "primary": False,
+            })
         else:
-            jobs.append({"name": "llm_candidates_10", "history_mode": "combined", "k": 10, "primary": False})
-        jobs.append({"name": "llm_highest_rated", "history_mode": "highest_rated", "k": candidate_limit, "primary": False})
-        jobs.append({"name": "llm_recent_positive", "history_mode": "recent_positive", "k": candidate_limit, "primary": False})
+            jobs.append({
+                "name": "llm_candidates_10",
+                "history_mode": "combined",
+                "k": 10,
+                "candidate_order": "hybrid",
+                "primary": False,
+            })
+        jobs.append({
+            "name": "llm_highest_rated",
+            "history_mode": "highest_rated",
+            "k": candidate_limit,
+            "candidate_order": "hybrid",
+            "primary": False,
+        })
+        jobs.append({
+            "name": "llm_recent_positive",
+            "history_mode": "recent_positive",
+            "k": candidate_limit,
+            "candidate_order": "hybrid",
+            "primary": False,
+        })
+        jobs.append({
+            "name": "llm_k20_reverse" if candidate_limit == 20 else f"llm_k{candidate_limit}_reverse",
+            "history_mode": "combined",
+            "k": candidate_limit,
+            "candidate_order": "reverse",
+            "primary": False,
+        })
     # The block above always appends the size-10 job when ablations are on. Keep it, including
     # the case where the primary job is already size 10, so the ablation file has an explicit row.
 
@@ -162,10 +209,16 @@ def run_llm_evaluation(
         maximum_api_calls=maximum_api_calls,
         refresh_cache=refresh_cache,
     )
+    target_audit_samples = (
+        explanation_audit_samples
+        if explanation_audit_samples is not None
+        else getattr(config.evaluation, "explanation_audit_samples", 50)
+    )
     try:
         estimate = _estimate(gateway, jobs, prepared_by_id, histories, data, content, popularity, config, alpha, refresh_cache)
         if explanations:
-            estimate["explanation_calls_upper_bound"] = min(5, len(sampled))
+            audit_users = select_audit_users(sampled, user_tiers, target_audit_samples, movies_per_user=5)
+            estimate["explanation_calls_upper_bound"] = len(audit_users)
             estimate["uncached_upper_bound"] += estimate["explanation_calls_upper_bound"]
         estimate["repairs_not_included"] = (
             "A repair call is made only after an invalid ranking. It is not part of the base estimate."
@@ -225,6 +278,7 @@ def run_llm_evaluation(
             estimate=estimate,
             user_tiers=user_tiers,
             tier_counts=tier_counts,
+            target_audit_samples=target_audit_samples,
         )
     finally:
         _close_client(live_client)
@@ -288,7 +342,12 @@ def _estimate(gateway, jobs, prepared_by_id, histories, data, content, popularit
             profile, candidates = _profile_and_candidates(
                 job, user, histories, data, content, popularity, config, alpha
             )
-            messages = build_rerank_messages(profile, candidates)
+            prompt_candidates = (
+                list(reversed(candidates))
+                if job.get("candidate_order") == "reverse"
+                else candidates
+            )
+            messages = build_rerank_messages(profile, prompt_candidates)
             prompt_tokens.append(prompt_token_estimate(messages))
             if refresh_cache or not gateway.is_cached(task="rerank", messages=messages):
                 uncached += 1
@@ -327,6 +386,55 @@ def _profile_and_candidates(job, user, histories, data, content, popularity, con
     return profile, candidates
 
 
+def select_audit_users(
+    sampled_users: list[int] | np.ndarray,
+    user_tiers: dict[int, str] | None,
+    target_samples: int,
+    movies_per_user: int = 5,
+) -> list[int]:
+    """Select users round-robin across activity tiers to satisfy target explanation samples."""
+    if target_samples <= 0 or not len(sampled_users):
+        return []
+    target_users = math.ceil(target_samples / max(movies_per_user, 1))
+    target_users = min(target_users, len(sampled_users))
+
+    if not user_tiers:
+        return [int(u) for u in sampled_users[:target_users]]
+
+    tier_buckets: dict[str, list[int]] = {"low": [], "medium": [], "high": []}
+    other: list[int] = []
+    for u in sampled_users:
+        uid = int(u)
+        tier = user_tiers.get(uid)
+        if tier in tier_buckets:
+            tier_buckets[tier].append(uid)
+        else:
+            other.append(uid)
+
+    selected: list[int] = []
+    tiers = ["low", "medium", "high"]
+    idx = {t: 0 for t in tiers}
+
+    while len(selected) < target_users:
+        advanced = False
+        for t in tiers:
+            if idx[t] < len(tier_buckets[t]):
+                selected.append(tier_buckets[t][idx[t]])
+                idx[t] += 1
+                advanced = True
+                if len(selected) == target_users:
+                    break
+        if not advanced:
+            for u in other:
+                if u not in selected:
+                    selected.append(u)
+                    if len(selected) == target_users:
+                        break
+            break
+
+    return selected
+
+
 def _execute(
     config,
     gateway,
@@ -348,6 +456,7 @@ def _execute(
     estimate: dict,
     user_tiers: dict[int, str] | None = None,
     tier_counts: dict[str, int] | None = None,
+    target_audit_samples: int = 50,
 ) -> dict:
     genre_by_movie = {
         int(movie_id): data.genres[row] for row, movie_id in enumerate(data.movies["movie_id"].astype(int))
@@ -357,7 +466,10 @@ def _execute(
     primary_rows = []
     ablation_rows = []
     explanation_examples = []
-    explained = 0
+    audit_rows: list[dict] = []
+    audit_users = select_audit_users(sampled, user_tiers, target_audit_samples, movies_per_user=5) if explanations else []
+    audit_users_set = set(audit_users)
+    audit_user_data: dict[int, tuple[dict, list[dict]]] = {}
     per_job_rankings: dict[str, dict[int, np.ndarray]] = {}
     hybrid_rankings: dict[int, np.ndarray] = {}
     for job in jobs:
@@ -377,7 +489,17 @@ def _execute(
             hybrid_head = [int(row["movie_id"]) for row in candidates]
             hybrid_full = hybrid_component_frame(user, alpha)["movie_id"].to_numpy(dtype=int)
             hybrid_rankings[int(user_id)] = hybrid_full
-            outcome = rerank_candidates(gateway, profile, candidates)
+            prompt_candidates = (
+                list(reversed(candidates))
+                if job.get("candidate_order") == "reverse"
+                else candidates
+            )
+            outcome = rerank_candidates(
+                gateway,
+                profile,
+                prompt_candidates,
+                original_candidates=candidates,
+            )
             job_calls += outcome.api_calls
             reranked = _full_ranking(hybrid_full, outcome.ranked_movie_ids)
             rankings[int(user_id)] = reranked
@@ -401,21 +523,10 @@ def _execute(
                         "reasoning_summary": outcome.reasoning_summary,
                     }
                 )
-                if explanations and explained < 5 and outcome.fallback_reason != "dry_run":
-                    top_movies = [row for row in candidates if int(row["movie_id"]) in set(outcome.ranked_movie_ids[:5])]
-                    # Preserve the reranked top-5 order.
+                if explanations and int(user_id) in audit_users_set and outcome.fallback_reason != "dry_run":
                     by_id = {int(row["movie_id"]): row for row in candidates}
                     top_movies = [by_id[movie_id] for movie_id in outcome.ranked_movie_ids[:5] if movie_id in by_id]
-                    explanation = explain_movies(gateway, profile, top_movies)
-                    explanation_examples.append(
-                        {
-                            "user_id": int(user_id),
-                            "fallback_reason": explanation.fallback_reason,
-                            "explanations": explanation.explanations,
-                            "mock": mock,
-                        }
-                    )
-                    explained += 1
+                    audit_user_data[int(user_id)] = (profile, top_movies)
         per_job_rankings[job["name"]] = rankings
         frame = per_user_metrics(
             rankings,
@@ -438,6 +549,7 @@ def _execute(
                 "name": job["name"],
                 "history_mode": job["history_mode"],
                 "candidate_k": job["k"],
+                "candidate_order": job.get("candidate_order", "hybrid"),
                 "ndcg@10": summary["ndcg@10"]["mean"],
                 "hit@10": summary["hit@10"]["mean"],
                 "mrr": summary["mrr"]["mean"],
@@ -453,6 +565,62 @@ def _execute(
             primary_frame = frame
             primary_summary = summary
             primary_displacement = np.asarray(displacements, dtype=float)
+
+    if explanations and audit_users:
+        for uid in audit_users:
+            if len(audit_rows) >= target_audit_samples:
+                break
+            if uid not in audit_user_data:
+                continue
+            profile, top_movies = audit_user_data[uid]
+            explanation = explain_movies(gateway, profile, top_movies, ground_truth_genres=genre_by_movie)
+            explanation_examples.append(
+                {
+                    "user_id": int(uid),
+                    "fallback_reason": explanation.fallback_reason,
+                    "explanations": explanation.explanations,
+                    "mock": mock,
+                }
+            )
+            recent_items = profile.get("recent_positive") or profile.get("highest_rated") or []
+            history_text = "; ".join(
+                f"{m.get('title', '')} ({str(m.get('genres', '')).replace('|', ', ')})"
+                for m in recent_items
+            )
+            if not history_text:
+                history_text = "none"
+            tier_val = (user_tiers or {}).get(int(uid), "unknown")
+            by_id = {int(row["movie_id"]): row for row in top_movies}
+            for exp in explanation.explanations:
+                if len(audit_rows) >= target_audit_samples:
+                    break
+                m_id = int(exp["movie_id"])
+                m_info = by_id.get(m_id, {})
+                m_title = str(m_info.get("title", "")) or f"Movie {m_id}"
+                m_genres = str(m_info.get("genres", "")) or "unknown"
+                exp_text = str(exp.get("explanation", ""))
+                tmpl = template_explanation(m_id, m_title, m_genres)
+                is_fallback = (exp_text == tmpl) or (explanation.fallback_reason not in {"none", "partial_template", "hallucinated_genre"})
+                row_fallback_reason = explanation.fallback_reason if is_fallback else "none"
+                if is_fallback and row_fallback_reason == "none":
+                    row_fallback_reason = "template"
+                audit_rows.append(
+                    {
+                        "user_id": int(uid),
+                        "activity_tier": tier_val,
+                        "movie_id": m_id,
+                        "movie_title": m_title,
+                        "ground_truth_genres": m_genres,
+                        "user_recent_positive_history": history_text,
+                        "explanation_text": exp_text,
+                        "used_fallback": bool(is_fallback),
+                        "fallback_reason": row_fallback_reason,
+                        "factual_support_1_5": "",
+                        "history_relevance_1_5": "",
+                        "user_utility_1_5": "",
+                        "auditor_notes": "",
+                    }
+                )
 
     hybrid_frame = per_user_metrics(
         hybrid_rankings,
@@ -525,8 +693,28 @@ def _execute(
         )
     save_json(metrics_dir / "llm_comparison.json", result)
     save_json(metrics_dir / "llm_ablations.json", {"rows": ablation_rows, "mock_llm": mock, "result_type": result_type})
+    pd.DataFrame(ablation_rows).to_csv(metrics_dir / "llm_ablations.csv", index=False)
     if explanation_examples:
         save_json(metrics_dir / "explanation_examples.json", explanation_examples)
+    if explanations:
+        audit_cols = [
+            "user_id",
+            "activity_tier",
+            "movie_id",
+            "movie_title",
+            "ground_truth_genres",
+            "user_recent_positive_history",
+            "explanation_text",
+            "used_fallback",
+            "fallback_reason",
+            "factual_support_1_5",
+            "history_relevance_1_5",
+            "user_utility_1_5",
+            "auditor_notes",
+        ]
+        pd.DataFrame(audit_rows, columns=audit_cols).to_csv(
+            metrics_dir / "manual_audit_explanations.csv", index=False
+        )
     if len(primary_displacement):
         plot_rank_displacement(primary_displacement, plots_dir / "llm_rank_displacement.png")
     cost = pd.DataFrame(

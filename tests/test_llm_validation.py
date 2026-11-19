@@ -315,18 +315,21 @@ def test_log_formatter_redacts_api_key(monkeypatch):
 
 
 def test_tracked_files_do_not_contain_a_filled_api_key():
+    import os
+
     root = Path(__file__).resolve().parents[1]
     blocked = {".git", ".venv", "ml-100k", "artifacts", "data", "__pycache__"}
     offenders = []
-    for path in root.rglob("*"):
-        if not path.is_file() or blocked.intersection(path.parts):
-            continue
-        if path.suffix.lower() not in {".py", ".md", ".yml", ".yaml", ".toml", ".txt", ".example", ".ipynb"}:
-            continue
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        for line in text.splitlines():
-            if line.startswith("LLM_API_KEY=") and line.strip() != "LLM_API_KEY=":
-                offenders.append(str(path))
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in blocked]
+        for fname in filenames:
+            path = Path(dirpath) / fname
+            if path.suffix.lower() not in {".py", ".md", ".yml", ".yaml", ".toml", ".txt", ".example", ".ipynb"}:
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for line in text.splitlines():
+                if line.startswith("LLM_API_KEY=") and line.strip() != "LLM_API_KEY=":
+                    offenders.append(str(path))
     assert offenders == []
 
 
@@ -425,3 +428,93 @@ def test_extract_mentioned_genres_aliases():
     assert extract_mentioned_genres("Fun for children's entertainment") == {"Children's"}
     assert extract_mentioned_genres("Fun for children everywhere") == {"Children's"}
     assert extract_mentioned_genres("An unknown plot with high tension") == set()
+
+
+def test_reverse_candidate_order_prompt_and_fallback(tmp_path):
+    class MockChat:
+        def __init__(self, text: str):
+            self.text = text
+
+        def chat(self, messages, *, model, temperature, timeout=None):
+            return self.text
+
+    profile = _profile()
+    hybrid_prompt = build_rerank_messages(profile, CANDIDATES)
+    reverse_prompt = build_rerank_messages(profile, list(reversed(CANDIDATES)))
+
+    hybrid_user_msg = hybrid_prompt[-1]["content"]
+    reverse_user_msg = reverse_prompt[-1]["content"]
+    assert hybrid_user_msg != reverse_user_msg
+
+    # In hybrid prompt, id=1 comes before id=4 in [CANDIDATES]
+    assert hybrid_user_msg.index("id=1 |") < hybrid_user_msg.index("id=4 |")
+    # In reverse prompt, id=4 comes before id=1 in [CANDIDATES]
+    assert reverse_user_msg.index("id=4 |") < reverse_user_msg.index("id=1 |")
+
+    # When fallback completion occurs, it must preserve original hybrid rank order
+    partial_resp = '{"ranked_movie_ids": [4], "reasoning_summary": "Only movie 4."}'
+    gateway = _gateway(tmp_path, MockChat(partial_resp))
+    outcome = rerank_candidates(
+        gateway,
+        profile,
+        candidates=list(reversed(CANDIDATES)),
+        original_candidates=CANDIDATES,
+    )
+    # 4 was returned; missing 1, 2, 3 must be appended in original hybrid order (1, 2, 3), not reversed (3, 2, 1)
+    assert outcome.ranked_movie_ids == [4, 1, 2, 3]
+    assert outcome.fallback_reason == "partial_completion"
+
+
+def test_reverse_and_hybrid_do_not_collide_cache_keys():
+    from movie_recommender.llm.client import cache_key
+
+    profile = _profile()
+    hybrid_messages = build_rerank_messages(profile, CANDIDATES)
+    reverse_messages = build_rerank_messages(profile, list(reversed(CANDIDATES)))
+
+    key_hybrid = cache_key(
+        model="qwen35-27b",
+        messages=hybrid_messages,
+        temperature=0.0,
+        task="rerank",
+    )
+    key_reverse = cache_key(
+        model="qwen35-27b",
+        messages=reverse_messages,
+        temperature=0.0,
+        task="rerank",
+    )
+    assert key_hybrid != key_reverse
+
+
+def test_select_audit_users_round_robin():
+    from movie_recommender.llm_experiment import select_audit_users
+
+    sampled = list(range(1, 101))
+    user_tiers = {}
+    for u in sampled[:34]:
+        user_tiers[u] = "low"
+    for u in sampled[34:67]:
+        user_tiers[u] = "medium"
+    for u in sampled[67:]:
+        user_tiers[u] = "high"
+
+    # For 50 samples with 5 movies per user -> 10 users
+    selected = select_audit_users(sampled, user_tiers, target_samples=50, movies_per_user=5)
+    assert len(selected) == 10
+    assert [user_tiers[u] for u in selected] == [
+        "low", "medium", "high",
+        "low", "medium", "high",
+        "low", "medium", "high",
+        "low",
+    ]
+
+    # Target 4 samples -> 1 user
+    single = select_audit_users(sampled, user_tiers, target_samples=4, movies_per_user=5)
+    assert len(single) == 1
+    assert user_tiers[single[0]] == "low"
+
+    # Edge cases
+    assert select_audit_users(sampled, user_tiers, target_samples=0) == []
+    no_tiers = select_audit_users(sampled, None, target_samples=15, movies_per_user=5)
+    assert no_tiers == [1, 2, 3]

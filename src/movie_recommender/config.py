@@ -92,6 +92,7 @@ class EvaluationConfig(BaseModel):
     k_values: list[int] = Field(default_factory=lambda: [5, 10])
     llm_sample_users: int = 100
     stratify_sample_users: bool = True
+    explanation_audit_samples: int = 50
     bootstrap_resamples: int = 1000
 
     @field_validator("k_values")
@@ -101,7 +102,7 @@ class EvaluationConfig(BaseModel):
             raise ValueError("k_values must be positive")
         return value
 
-    @field_validator("llm_sample_users", "bootstrap_resamples")
+    @field_validator("llm_sample_users", "bootstrap_resamples", "explanation_audit_samples")
     @classmethod
     def positive(cls, value: int) -> int:
         if value < 1:
@@ -183,5 +184,6 @@ class AppConfig(BaseModel):
         )
         cfg.matrix_factorization.patience = min(cfg.matrix_factorization.patience, 2)
         cfg.evaluation.llm_sample_users = min(cfg.evaluation.llm_sample_users, 25)
+        cfg.evaluation.explanation_audit_samples = min(cfg.evaluation.explanation_audit_samples, 5)
         cfg.evaluation.bootstrap_resamples = min(cfg.evaluation.bootstrap_resamples, 200)
         return cfg

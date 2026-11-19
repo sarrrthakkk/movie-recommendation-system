@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pandas as pd
+
 from movie_recommender.config import AppConfig
 from movie_recommender.data import save_processed
 from movie_recommender.llm_experiment import run_llm_evaluation
@@ -35,6 +37,7 @@ def test_tiny_pipeline_trains_evaluates_and_mock_reranks(tmp_path):
     config.matrix_factorization.device = "cpu"
     config.evaluation.bootstrap_resamples = 25
     config.evaluation.llm_sample_users = 4
+    config.evaluation.explanation_audit_samples = 4
     config.hybrid.top_k_candidates = 5
     config.llm.maximum_candidates = 5
     metadata = train_models(
@@ -67,5 +70,38 @@ def test_tiny_pipeline_trains_evaluates_and_mock_reranks(tmp_path):
     assert (artifacts / "plots" / "model_comparison.png").exists()
     assert (artifacts / "plots" / "mf_training_curves.png").exists()
     assert (artifacts / "metrics" / "explanation_examples.json").exists()
+    assert (artifacts / "metrics" / "llm_ablations.csv").exists()
+    assert (artifacts / "metrics" / "manual_audit_explanations.csv").exists()
+    audit_df = pd.read_csv(artifacts / "metrics" / "manual_audit_explanations.csv", keep_default_na=False)
+    assert len(audit_df) == 4
+    assert list(audit_df.columns) == [
+        "user_id",
+        "activity_tier",
+        "movie_id",
+        "movie_title",
+        "ground_truth_genres",
+        "user_recent_positive_history",
+        "explanation_text",
+        "used_fallback",
+        "fallback_reason",
+        "factual_support_1_5",
+        "history_relevance_1_5",
+        "user_utility_1_5",
+        "auditor_notes",
+    ]
+    for col in [
+        "user_id",
+        "activity_tier",
+        "movie_id",
+        "movie_title",
+        "ground_truth_genres",
+        "user_recent_positive_history",
+        "explanation_text",
+        "used_fallback",
+        "fallback_reason",
+    ]:
+        assert (audit_df[col].astype(str).str.strip() != "").all()
+    for col in ["factual_support_1_5", "history_relevance_1_5", "user_utility_1_5", "auditor_notes"]:
+        assert (audit_df[col] == "").all()
     cache = (artifacts / "cache" / "llm_cache.sqlite").read_bytes()
     assert b"LLM_API_KEY" not in cache

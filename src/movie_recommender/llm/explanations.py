@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+import numpy as np
 from pydantic import ValidationError
 
+from movie_recommender.data import GENRE_NAMES
 from movie_recommender.llm.client import BudgetExceeded, LLMGateway, LLMRequestError
 from movie_recommender.llm.prompts import build_explanation_messages
 from movie_recommender.llm.schemas import ExplanationResponse, parse_json_object
@@ -50,11 +52,19 @@ def extract_mentioned_genres(text: str) -> set[str]:
 
 def parse_movie_genres(genres_obj: object) -> set[str]:
     """Parse movie genres into a set of canonical genre names."""
-    if not genres_obj:
+    if genres_obj is None:
         return set()
-    if isinstance(genres_obj, (list, set, tuple)):
+    if isinstance(genres_obj, np.ndarray):
+        if genres_obj.ndim == 1 and len(genres_obj) == len(GENRE_NAMES):
+            return {GENRE_NAMES[i] for i, val in enumerate(genres_obj) if val > 0}
+        raw_list = [str(g).strip() for g in genres_obj.tolist()]
+    elif isinstance(genres_obj, (list, set, tuple)):
+        if len(genres_obj) == len(GENRE_NAMES) and all(isinstance(x, (int, float, np.number)) for x in genres_obj):
+            return {GENRE_NAMES[i] for i, val in enumerate(genres_obj) if val > 0}
         raw_list = [str(g).strip() for g in genres_obj]
     elif isinstance(genres_obj, str):
+        if not genres_obj.strip():
+            return set()
         raw_list = [p.strip() for p in re.split(r"[|,]", genres_obj) if p.strip()]
     else:
         return set()
