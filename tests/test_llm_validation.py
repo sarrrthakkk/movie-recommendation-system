@@ -518,3 +518,172 @@ def test_select_audit_users_round_robin():
     assert select_audit_users(sampled, user_tiers, target_samples=0) == []
     no_tiers = select_audit_users(sampled, None, target_samples=15, movies_per_user=5)
     assert no_tiers == [1, 2, 3]
+
+
+def test_candidates_prompt_formatting_with_and_without_tmdb():
+    from movie_recommender.llm.prompts import build_rerank_messages
+
+    profile = _profile()
+    candidates = [
+        {"movie_id": 1, "title": "Alpha (1994)", "year": 1994, "genres": "Action"},
+        {"movie_id": 2, "title": "Beta (1994)", "year": 1994, "genres": "Comedy"},
+        {"movie_id": 3, "title": "Gamma (1994)", "year": 1994, "genres": "Drama"},
+    ]
+    tmdb_meta = {
+        1: {
+            "movie_id": 1,
+            "director": "Steven Spielberg",
+            "top_cast": ["Tom Hanks", "Matt Damon"],
+            "overview": "A daring mission behind enemy lines \n with intense action \t and heroic choices that shape history forever.",
+        },
+        2: {
+            "movie_id": 2,
+            "director": None,
+            "top_cast": [],
+            "overview": "",
+        },
+    }
+
+    # 1. With TMDB metadata
+    messages_tmdb = build_rerank_messages(profile, candidates, tmdb_metadata=tmdb_meta, max_plot_chars=40)
+    user_content = messages_tmdb[-1]["content"]
+
+    cand_section = user_content.split("[CANDIDATES]\n")[1].split("\nThere are")[0]
+    lines = cand_section.splitlines()
+
+    assert "id=1 | Alpha (1994) | 1994 | Action" in lines[0]
+    assert "director=Steven Spielberg" in lines[0]
+    assert "cast=Tom Hanks, Matt Damon" in lines[0]
+    assert "plot=" in lines[0]
+    assert "\n" not in lines[0].split("plot=")[1]
+    assert "\t" not in lines[0].split("plot=")[1]
+    plot_text = lines[0].split("plot=")[1]
+    assert len(plot_text) <= 40
+    assert plot_text == "A daring mission behind enemy lines with"
+
+    # Candidate 2 has empty/None fields -> no "plot=None", no "director=None", no trailing pipes
+    assert lines[1] == "- id=2 | Beta (1994) | 1994 | Comedy"
+    assert "None" not in lines[1]
+    assert "plot=" not in lines[1]
+    assert "director=" not in lines[1]
+
+    # Candidate 3 is missing -> regular clean line
+    assert lines[2] == "- id=3 | Gamma (1994) | 1994 | Drama"
+
+    # User history items must remain compact without plot/director
+    for hist_sec in ["[HIGHEST_RATED]", "[LOWEST_RATED]", "[RECENT_POSITIVE]"]:
+        sec_text = user_content.split(f"{hist_sec}\n")[1].split("\n\n")[0]
+        assert "plot=" not in sec_text
+        assert "director=" not in sec_text
+        assert "cast=" not in sec_text
+
+    # 2. Without TMDB metadata (genre-only)
+    messages_genre = build_rerank_messages(profile, candidates)
+    user_content_genre = messages_genre[-1]["content"]
+    cand_section_genre = user_content_genre.split("[CANDIDATES]\n")[1].split("\nThere are")[0].strip()
+    assert cand_section_genre == (
+        "- id=1 | Alpha (1994) | 1994 | Action\n"
+        "- id=2 | Beta (1994) | 1994 | Comedy\n"
+        "- id=3 | Gamma (1994) | 1994 | Drama"
+    )
+
+
+def test_cache_key_differs_between_genre_only_and_tmdb():
+    from movie_recommender.llm.client import cache_key
+
+    profile = _profile()
+    tmdb_meta = {
+        1: {
+            "movie_id": 1,
+            "director": "Steven Spielberg",
+            "top_cast": ["Tom Hanks"],
+            "overview": "A great plot overview.",
+        }
+    }
+    messages_genre = build_rerank_messages(profile, CANDIDATES)
+    messages_tmdb = build_rerank_messages(profile, CANDIDATES, tmdb_metadata=tmdb_meta)
+
+    key_genre = cache_key(model="qwen35-27b", messages=messages_genre, temperature=0.0, task="rerank")
+    key_tmdb = cache_key(model="qwen35-27b", messages=messages_tmdb, temperature=0.0, task="rerank")
+    assert key_genre != key_tmdb
+
+
+def test_explain_movies_metadata_alignment(tmp_path):
+    class MockChat:
+        def __init__(self, text: str):
+            self.text = text
+
+        def chat(self, messages, *, model, temperature, timeout=None):
+            return self.text
+
+    profile = _profile()
+    movies = [{"movie_id": 1, "title": "Alpha (1994)", "year": 1994, "genres": "Drama"}]
+    gt_genres = {1: "Drama"}
+
+    # 1. Explanation mentioning director when has_tmdb_metadata=False -> rejected, falls back to template
+    dir_text = '{"explanations": [{"movie_id": 1, "explanation": "Movie 1 features director Steven Spielberg with great emotional depth."}]}'
+    outcome_genre = explain_movies(
+        _gateway(tmp_path, MockChat(dir_text), refresh_cache=True),
+        profile,
+        movies,
+        ground_truth_genres=gt_genres,
+        has_tmdb_metadata=False,
+    )
+    assert outcome_genre.fallback_reason == "partial_template"
+    assert "overlap preferences" in outcome_genre.explanations[0]["explanation"]
+
+    # 2. Same explanation when has_tmdb_metadata=True -> accepted
+    outcome_tmdb = explain_movies(
+        _gateway(tmp_path, MockChat(dir_text), refresh_cache=True),
+        profile,
+        movies,
+        ground_truth_genres=gt_genres,
+        has_tmdb_metadata=True,
+    )
+    assert outcome_tmdb.fallback_reason == "none"
+    assert "features director Steven Spielberg" in outcome_tmdb.explanations[0]["explanation"]
+
+    # 3. Grounded plot mention with actor when has_tmdb_metadata=True -> accepted
+    actor_text = '{"explanations": [{"movie_id": 1, "explanation": "Movie 1 features an intense drama starring Tom Hanks."}]}'
+    outcome_actor = explain_movies(
+        _gateway(tmp_path, MockChat(actor_text), refresh_cache=True),
+        profile,
+        movies,
+        ground_truth_genres=gt_genres,
+        has_tmdb_metadata=True,
+    )
+    assert outcome_actor.fallback_reason == "none"
+    assert "starring Tom Hanks" in outcome_actor.explanations[0]["explanation"]
+
+    # 4. Hallucinated genre (Sci-Fi when movie is only Drama) with has_tmdb_metadata=True -> still rejected!
+    hallucinated_text = '{"explanations": [{"movie_id": 1, "explanation": "Movie 1 is a thrilling sci-fi directed by Steven Spielberg."}]}'
+    outcome_hallucinated = explain_movies(
+        _gateway(tmp_path, MockChat(hallucinated_text), refresh_cache=True),
+        profile,
+        movies,
+        ground_truth_genres=gt_genres,
+        has_tmdb_metadata=True,
+    )
+    assert outcome_hallucinated.fallback_reason == "hallucinated_genre"
+    assert "overlap preferences" in outcome_hallucinated.explanations[0]["explanation"]
+
+    # 5. Leakage word (certainly / hidden score) with has_tmdb_metadata=True -> still rejected!
+    leakage_text = '{"explanations": [{"movie_id": 1, "explanation": "Movie 1 will certainly appeal to you based on hidden score."}]}'
+    outcome_leakage = explain_movies(
+        _gateway(tmp_path, MockChat(leakage_text), refresh_cache=True),
+        profile,
+        movies,
+        ground_truth_genres=gt_genres,
+        has_tmdb_metadata=True,
+    )
+    assert outcome_leakage.fallback_reason == "partial_template"
+
+
+def test_missing_tmdb_cache_falls_back_to_genre_only(tmp_path):
+    from movie_recommender.config import AppConfig
+
+    cfg = AppConfig()
+    cfg.llm.use_tmdb_metadata = True
+    cfg.llm.tmdb_cache_path = str(tmp_path / "non_existent_cache.json")
+    assert cfg.llm.use_tmdb_metadata is True
+    assert not Path(cfg.llm.tmdb_cache_path).exists()

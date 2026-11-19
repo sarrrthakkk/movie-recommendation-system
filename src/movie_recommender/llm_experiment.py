@@ -33,6 +33,7 @@ from movie_recommender.llm.client import (
 from movie_recommender.llm.explanations import explain_movies, template_explanation
 from movie_recommender.llm.prompts import PROMPT_VERSION, build_rerank_messages, prompt_token_estimate
 from movie_recommender.llm.reranker import rerank_candidates
+from movie_recommender.tmdb import load_tmdb_metadata
 from movie_recommender.models.content_based import ContentModel
 from movie_recommender.models.matrix_factorization import MatrixFactorizationRecommender
 from movie_recommender.models.popularity import PopularityModel
@@ -142,6 +143,35 @@ def run_llm_evaluation(
         if int(test_targets[int(user_id)]) in history_ids or int(val_targets[int(user_id)]) in history_ids:
             raise RuntimeError(f"Held-out interaction leaked into the prompt history for user {user_id}")
 
+    use_tmdb_cfg = bool(getattr(config.llm, "use_tmdb_metadata", True))
+    tmdb_cache_path = getattr(config.llm, "tmdb_cache_path", "data/processed/tmdb_metadata.json")
+    max_plot_chars = int(getattr(config.llm, "max_plot_chars", 220))
+
+    cache_path = resolve_path(tmdb_cache_path)
+    tmdb_metadata: dict[int, dict] = {}
+    use_tmdb = False
+    if use_tmdb_cfg:
+        if not cache_path.is_file():
+            logger.warning(
+                "TMDB metadata cache not found at %s. Falling back to genre-only mode.",
+                cache_path,
+            )
+        else:
+            loaded_tmdb = load_tmdb_metadata(cache_path)
+            if not loaded_tmdb:
+                logger.warning(
+                    "TMDB metadata cache at %s is empty. Falling back to genre-only mode.",
+                    cache_path,
+                )
+            else:
+                tmdb_metadata = loaded_tmdb
+                use_tmdb = True
+                logger.info(
+                    "Loaded TMDB metadata for %d movies from %s",
+                    len(tmdb_metadata),
+                    cache_path,
+                )
+
     candidate_limit = min(config.hybrid.top_k_candidates, config.llm.maximum_candidates)
     jobs = [
         {
@@ -149,6 +179,7 @@ def run_llm_evaluation(
             "history_mode": "combined",
             "k": candidate_limit,
             "candidate_order": "hybrid",
+            "use_tmdb": use_tmdb,
             "primary": True,
         }
     ]
@@ -159,6 +190,7 @@ def run_llm_evaluation(
                 "history_mode": "combined",
                 "k": min(10, candidate_limit),
                 "candidate_order": "hybrid",
+                "use_tmdb": use_tmdb,
                 "primary": False,
             })
         elif candidate_limit != 10:
@@ -167,6 +199,7 @@ def run_llm_evaluation(
                 "history_mode": "combined",
                 "k": 10,
                 "candidate_order": "hybrid",
+                "use_tmdb": use_tmdb,
                 "primary": False,
             })
         else:
@@ -175,6 +208,7 @@ def run_llm_evaluation(
                 "history_mode": "combined",
                 "k": 10,
                 "candidate_order": "hybrid",
+                "use_tmdb": use_tmdb,
                 "primary": False,
             })
         jobs.append({
@@ -182,6 +216,7 @@ def run_llm_evaluation(
             "history_mode": "highest_rated",
             "k": candidate_limit,
             "candidate_order": "hybrid",
+            "use_tmdb": use_tmdb,
             "primary": False,
         })
         jobs.append({
@@ -189,6 +224,7 @@ def run_llm_evaluation(
             "history_mode": "recent_positive",
             "k": candidate_limit,
             "candidate_order": "hybrid",
+            "use_tmdb": use_tmdb,
             "primary": False,
         })
         jobs.append({
@@ -196,8 +232,18 @@ def run_llm_evaluation(
             "history_mode": "combined",
             "k": candidate_limit,
             "candidate_order": "reverse",
+            "use_tmdb": use_tmdb,
             "primary": False,
         })
+        if use_tmdb:
+            jobs.append({
+                "name": "llm_k20_genre_only" if candidate_limit == 20 else f"llm_k{candidate_limit}_genre_only",
+                "history_mode": "combined",
+                "k": candidate_limit,
+                "candidate_order": "hybrid",
+                "use_tmdb": False,
+                "primary": False,
+            })
     # The block above always appends the size-10 job when ablations are on. Keep it, including
     # the case where the primary job is already size 10, so the ablation file has an explicit row.
 
@@ -215,7 +261,20 @@ def run_llm_evaluation(
         else getattr(config.evaluation, "explanation_audit_samples", 50)
     )
     try:
-        estimate = _estimate(gateway, jobs, prepared_by_id, histories, data, content, popularity, config, alpha, refresh_cache)
+        estimate = _estimate(
+            gateway,
+            jobs,
+            prepared_by_id,
+            histories,
+            data,
+            content,
+            popularity,
+            config,
+            alpha,
+            refresh_cache,
+            tmdb_metadata=tmdb_metadata,
+            max_plot_chars=max_plot_chars,
+        )
         if explanations:
             audit_users = select_audit_users(sampled, user_tiers, target_audit_samples, movies_per_user=5)
             estimate["explanation_calls_upper_bound"] = len(audit_users)
@@ -279,6 +338,9 @@ def run_llm_evaluation(
             user_tiers=user_tiers,
             tier_counts=tier_counts,
             target_audit_samples=target_audit_samples,
+            use_tmdb=use_tmdb,
+            tmdb_metadata=tmdb_metadata,
+            max_plot_chars=max_plot_chars,
         )
     finally:
         _close_client(live_client)
@@ -333,11 +395,25 @@ def _close_client(client: object) -> None:
         close()
 
 
-def _estimate(gateway, jobs, prepared_by_id, histories, data, content, popularity, config, alpha, refresh_cache) -> dict:
+def _estimate(
+    gateway,
+    jobs,
+    prepared_by_id,
+    histories,
+    data,
+    content,
+    popularity,
+    config,
+    alpha,
+    refresh_cache,
+    tmdb_metadata: dict[int, dict] | None = None,
+    max_plot_chars: int = 220,
+) -> dict:
     uncached = 0
     cached = 0
     prompt_tokens = []
     for job in jobs:
+        job_tmdb = tmdb_metadata if job.get("use_tmdb", False) else None
         for user in prepared_by_id.values():
             profile, candidates = _profile_and_candidates(
                 job, user, histories, data, content, popularity, config, alpha
@@ -347,7 +423,12 @@ def _estimate(gateway, jobs, prepared_by_id, histories, data, content, popularit
                 if job.get("candidate_order") == "reverse"
                 else candidates
             )
-            messages = build_rerank_messages(profile, prompt_candidates)
+            messages = build_rerank_messages(
+                profile,
+                prompt_candidates,
+                tmdb_metadata=job_tmdb,
+                max_plot_chars=max_plot_chars,
+            )
             prompt_tokens.append(prompt_token_estimate(messages))
             if refresh_cache or not gateway.is_cached(task="rerank", messages=messages):
                 uncached += 1
@@ -457,6 +538,9 @@ def _execute(
     user_tiers: dict[int, str] | None = None,
     tier_counts: dict[str, int] | None = None,
     target_audit_samples: int = 50,
+    use_tmdb: bool = False,
+    tmdb_metadata: dict[int, dict] | None = None,
+    max_plot_chars: int = 220,
 ) -> dict:
     genre_by_movie = {
         int(movie_id): data.genres[row] for row, movie_id in enumerate(data.movies["movie_id"].astype(int))
@@ -480,6 +564,7 @@ def _execute(
         invalid = 0
         fallback = 0
         user_ids = sampled.tolist()
+        job_tmdb = tmdb_metadata if job.get("use_tmdb", False) else None
         for position, user_id in enumerate(user_ids, start=1):
             logger.info("Reranking user %s (%d of %d)", int(user_id), position, len(user_ids))
             user = prepared_by_id[int(user_id)]
@@ -499,6 +584,8 @@ def _execute(
                 profile,
                 prompt_candidates,
                 original_candidates=candidates,
+                tmdb_metadata=job_tmdb,
+                max_plot_chars=max_plot_chars,
             )
             job_calls += outcome.api_calls
             reranked = _full_ranking(hybrid_full, outcome.ranked_movie_ids)
@@ -550,6 +637,7 @@ def _execute(
                 "history_mode": job["history_mode"],
                 "candidate_k": job["k"],
                 "candidate_order": job.get("candidate_order", "hybrid"),
+                "use_tmdb": job.get("use_tmdb", False),
                 "ndcg@10": summary["ndcg@10"]["mean"],
                 "hit@10": summary["hit@10"]["mean"],
                 "mrr": summary["mrr"]["mean"],
@@ -567,13 +655,24 @@ def _execute(
             primary_displacement = np.asarray(displacements, dtype=float)
 
     if explanations and audit_users:
+        primary_job = next((j for j in jobs if j.get("primary")), jobs[0])
+        exp_tmdb = tmdb_metadata if primary_job.get("use_tmdb", False) else None
+        has_tmdb = bool(exp_tmdb)
         for uid in audit_users:
             if len(audit_rows) >= target_audit_samples:
                 break
             if uid not in audit_user_data:
                 continue
             profile, top_movies = audit_user_data[uid]
-            explanation = explain_movies(gateway, profile, top_movies, ground_truth_genres=genre_by_movie)
+            explanation = explain_movies(
+                gateway,
+                profile,
+                top_movies,
+                ground_truth_genres=genre_by_movie,
+                has_tmdb_metadata=has_tmdb,
+                tmdb_metadata=exp_tmdb,
+                max_plot_chars=max_plot_chars,
+            )
             explanation_examples.append(
                 {
                     "user_id": int(uid),
@@ -662,6 +761,8 @@ def _execute(
         "prompt_version": PROMPT_VERSION,
         "seed": config.seed,
         "n_users": int(len(sampled)),
+        "use_tmdb_metadata": use_tmdb,
+        "tmdb_metadata_count": len(tmdb_metadata),
         "user_tiers": user_tiers or {},
         "sampled_tier_counts": tier_counts or {},
         "tier_counts": tier_counts or {},

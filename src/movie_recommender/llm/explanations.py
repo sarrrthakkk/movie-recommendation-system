@@ -13,11 +13,19 @@ from movie_recommender.llm.client import BudgetExceeded, LLMGateway, LLMRequestE
 from movie_recommender.llm.prompts import build_explanation_messages
 from movie_recommender.llm.schemas import ExplanationResponse, parse_json_object
 
-_FORBIDDEN = re.compile(
+_FORBIDDEN_GENRE_ONLY = re.compile(
     r"\b(actor|actress|director|starring|certainly|definitely|test label|hidden score|ndcg)\b|"
     r"i am sure|i know you will",
     re.IGNORECASE,
 )
+
+_FORBIDDEN_TMDB = re.compile(
+    r"\b(certainly|definitely|test label|hidden score|ndcg)\b|"
+    r"i am sure|i know you will",
+    re.IGNORECASE,
+)
+
+_FORBIDDEN = _FORBIDDEN_GENRE_ONLY
 
 _GENRE_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(?:sci[\s-]fi|science[\s-]fiction)\b", re.IGNORECASE), "Sci-Fi"),
@@ -112,11 +120,37 @@ class ExplanationOutcome:
     api_calls: int
 
 
+def validate_explanation_text(
+    text: str,
+    movie_id: int,
+    ground_truth_genres: set[str] | None = None,
+    has_tmdb_metadata: bool = False,
+) -> tuple[bool, bool]:
+    """Validate explanation text.
+
+    Returns (is_valid, is_hallucinated_genre).
+    """
+    if not text or str(movie_id) not in text:
+        return False, False
+    forbidden = _FORBIDDEN_TMDB if has_tmdb_metadata else _FORBIDDEN_GENRE_ONLY
+    if forbidden.search(text):
+        return False, False
+    if ground_truth_genres is not None:
+        mentioned = extract_mentioned_genres(text)
+        if not mentioned.issubset(ground_truth_genres):
+            return False, True
+    return True, False
+
+
 def explain_movies(
     gateway: LLMGateway,
     profile: dict,
     movies: list[dict],
     ground_truth_genres: dict[int, object] | None = None,
+    *,
+    has_tmdb_metadata: bool = False,
+    tmdb_metadata: dict[int, dict] | None = None,
+    max_plot_chars: int = 220,
 ) -> ExplanationOutcome:
     """Explain the supplied movies. Any failure becomes a deterministic template."""
     templates = {
@@ -125,7 +159,13 @@ def explain_movies(
         )
         for movie in movies
     }
-    messages = build_explanation_messages(profile, movies)
+    messages = build_explanation_messages(
+        profile,
+        movies,
+        tmdb_metadata=tmdb_metadata,
+        max_plot_chars=max_plot_chars,
+        has_tmdb_metadata=has_tmdb_metadata,
+    )
     try:
         result = gateway.generate(task="explain", messages=messages)
     except (BudgetExceeded, LLMRequestError):
@@ -142,27 +182,21 @@ def explain_movies(
     hallucinated_genre = False
     for movie in movies:
         movie_id = int(movie["movie_id"])
-        text = _first_sentence(by_id.get(movie_id, ""))
-        is_invalid = (
-            not text
-            or str(movie_id) not in text
-            or _FORBIDDEN.search(text)
-            or movie_id not in by_id
+        raw_text = by_id.get(movie_id, "")
+        text = _first_sentence(raw_text) if movie_id in by_id else ""
+        gt = (
+            ground_truth_genres.get(movie_id)
+            if (ground_truth_genres is not None and movie_id in ground_truth_genres)
+            else movie.get("genres")
         )
-        is_hallucinated = False
-        if not is_invalid:
-            gt = (
-                ground_truth_genres.get(movie_id)
-                if (ground_truth_genres is not None and movie_id in ground_truth_genres)
-                else movie.get("genres")
-            )
-            if gt is not None:
-                valid_genres = parse_movie_genres(gt)
-                mentioned = extract_mentioned_genres(text)
-                if not mentioned.issubset(valid_genres):
-                    is_invalid = True
-                    is_hallucinated = True
-        if is_invalid:
+        valid_genres = parse_movie_genres(gt) if gt is not None else None
+        is_valid, is_hallucinated = validate_explanation_text(
+            text,
+            movie_id,
+            ground_truth_genres=valid_genres,
+            has_tmdb_metadata=has_tmdb_metadata,
+        )
+        if not is_valid:
             text = templates[movie_id]
             used_template = True
             if is_hallucinated:

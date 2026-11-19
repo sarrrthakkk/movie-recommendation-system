@@ -37,6 +37,9 @@ llm:
   maximum_candidates: 20
   maximum_positive_history: 10
   maximum_negative_history: 5
+  tmdb_cache_path: data/processed/tmdb_metadata.json
+  use_tmdb_metadata: true
+  max_plot_chars: 220
 
 # Extra settings. They have defaults in code if this file is trimmed to the
 # required keys above.

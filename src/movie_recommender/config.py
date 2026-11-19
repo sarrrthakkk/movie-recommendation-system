@@ -122,6 +122,16 @@ class LLMConfig(BaseModel):
     maximum_candidates: int = 20
     maximum_positive_history: int = 10
     maximum_negative_history: int = 5
+    tmdb_cache_path: str = "data/processed/tmdb_metadata.json"
+    use_tmdb_metadata: bool = True
+    max_plot_chars: int = 220
+
+    @field_validator("max_plot_chars")
+    @classmethod
+    def max_plot_chars_positive(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("max_plot_chars must be at least 1")
+        return value
 
     @field_validator("max_tokens")
     @classmethod

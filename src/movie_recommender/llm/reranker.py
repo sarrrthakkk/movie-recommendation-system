@@ -46,6 +46,8 @@ def rerank_candidates(
     profile: dict,
     candidates: list[dict],
     original_candidates: list[dict] | None = None,
+    tmdb_metadata: dict[int, dict] | None = None,
+    max_plot_chars: int = 220,
 ) -> RerankOutcome:
     """Rerank ``candidates``.
 
@@ -53,7 +55,12 @@ def rerank_candidates(
     used for membership validation, error fallbacks, and completing partial permutations.
     """
     original = _hybrid_ids(original_candidates if original_candidates is not None else candidates)
-    messages = build_rerank_messages(profile, candidates)
+    messages = build_rerank_messages(
+        profile,
+        candidates,
+        tmdb_metadata=tmdb_metadata,
+        max_plot_chars=max_plot_chars,
+    )
     prompt_tokens = prompt_token_estimate(messages)
     if prompt_tokens > TOKEN_WARNING_THRESHOLD:
         logger.warning("Rerank prompt estimates %d tokens, above the %d token budget", prompt_tokens, TOKEN_WARNING_THRESHOLD)
@@ -75,7 +82,13 @@ def rerank_candidates(
     if exact:
         return _outcome(ranked, summary, "none", False, cache_hit, latency, prompt_tokens, api_calls)
 
-    repair_messages = build_repair_messages(profile, candidates, first.text or "")
+    repair_messages = build_repair_messages(
+        profile,
+        candidates,
+        first.text or "",
+        tmdb_metadata=tmdb_metadata,
+        max_plot_chars=max_plot_chars,
+    )
     try:
         repair = gateway.generate(task="repair", messages=repair_messages)
     except BudgetExceeded:
