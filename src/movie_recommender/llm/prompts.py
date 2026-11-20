@@ -29,27 +29,35 @@ ranked_movie_ids must contain each allowed candidate ID exactly once and no othe
 """
 
 EXPLAIN_SYSTEM = """TASK: explain
-Write one-sentence explanations for the listed movies.
-Return JSON only:
+Write one-sentence personalized explanations for the listed recommended movies.
+Return JSON only, with exactly this structure:
 {"explanations": [{"movie_id": <int>, "explanation": "<one sentence containing the movie id>"}]}
 Rules:
 - Explain only the supplied movie IDs.
-- Each explanation is one sentence and includes the movie ID.
-- Use only the supplied training history and movie metadata.
-- Do not mention actors, directors, writers, or themes that were not provided.
+- Each explanation must be exactly ONE concise sentence containing TWO grounded parts:
+  1. An explicit connection to at least one exact movie title from the user's [RECENT_POSITIVE] list (or [HIGHEST_RATED] if no recent positive fits), stating the shared theme, tone, or genre.
+  2. Grounded metadata for the recommended film including its exact movie_id and listed genres.
+- Never write a standalone synopsis without linking to a specific movie title from the user's history.
+- Never cite the recommended movie itself as an example of the user's past viewing history.
+- Use ONLY genre words explicitly listed on that recommended movie's catalog line; do not introduce unlisted genre labels or genre adjectives (for example, do not describe a Drama/Thriller as a "crime" film or a Crime/Drama as "comedic").
+- Use only the supplied training history and movie metadata. Do not mention actors, directors, writers, or themes that were not provided.
 - Do not claim certainty about the user.
 - Do not mention scores, model internals, validation labels, or test labels.
 """
 
 EXPLAIN_SYSTEM_TMDB = """TASK: explain
-Write one-sentence explanations for the listed movies.
-Return JSON only:
+Write one-sentence personalized explanations for the listed recommended movies.
+Return JSON only, with exactly this structure:
 {"explanations": [{"movie_id": <int>, "explanation": "<one sentence containing the movie id>"}]}
 Rules:
 - Explain only the supplied movie IDs.
-- Each explanation is one sentence and includes the movie ID.
-- Use only the supplied training history and movie metadata.
-- Ground explanations in the supplied plot, director, cast, and genres. Do not mention unprovided facts.
+- Each explanation must be exactly ONE concise sentence containing TWO grounded parts:
+  1. An explicit connection to at least one exact movie title from the user's [RECENT_POSITIVE] list (or [HIGHEST_RATED] if no recent positive fits), stating the shared theme, tone, or genre.
+  2. Grounded metadata for the recommended film including its exact movie_id plus its supplied plot, director, or cast details.
+- Never write a standalone synopsis without linking to a specific movie title from the user's history.
+- Never cite the recommended movie itself as an example of the user's past viewing history.
+- Use ONLY genre words explicitly listed on that recommended movie's catalog line; do not introduce unlisted genre labels or genre adjectives (for example, do not describe a Drama/Thriller as a "crime" film or a Crime/Drama as "comedic").
+- Use only the supplied training history and movie metadata. Ground explanations in the supplied plot, director, cast, and genres. Do not mention unprovided facts.
 - Do not claim certainty about the user.
 - Do not mention scores, model internals, validation labels, or test labels.
 """
@@ -224,11 +232,20 @@ def build_explanation_messages(
         lines.append(f"{line}{suffix}")
 
     requested = "\n".join(lines)
-    history = _section("HIGHEST_RATED", profile.get("highest_rated", []), True)
+    history_sections = []
+    recent_pos = profile.get("recent_positive", [])
+    if recent_pos:
+        history_sections.append(_section("RECENT_POSITIVE", recent_pos, True))
+    highest = profile.get("highest_rated", [])
+    if highest:
+        history_sections.append(_section("HIGHEST_RATED", highest, True))
+    if not history_sections:
+        history_sections.append("[HIGHEST_RATED]\n- none")
+    history_text = "\n\n".join(history_sections)
     user = "\n\n".join(
         [
             "Explain these recommendations.",
-            history,
+            history_text,
             "[MOVIES]\n" + requested,
         ]
     )

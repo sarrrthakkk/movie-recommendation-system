@@ -753,3 +753,29 @@ def test_llm_model_env_override_and_rendered_report(tmp_path, monkeypatch):
     assert "Mock-client numbers are not measurements of gemini-3.1-flash-lite." in content
     assert "qwen35-27b" not in content
 
+
+def test_explain_system_tmdb_instructions():
+    from movie_recommender.llm.prompts import EXPLAIN_SYSTEM_TMDB, build_explanation_messages
+
+    # Check key instruction requirements in EXPLAIN_SYSTEM_TMDB
+    assert "[RECENT_POSITIVE]" in EXPLAIN_SYSTEM_TMDB
+    assert "exact movie title" in EXPLAIN_SYSTEM_TMDB
+    assert "ONLY genre words explicitly listed" in EXPLAIN_SYSTEM_TMDB
+    assert "Never cite the recommended movie itself" in EXPLAIN_SYSTEM_TMDB
+    assert "Never write a standalone synopsis" in EXPLAIN_SYSTEM_TMDB
+
+    # Check that build_explanation_messages includes recent positive history
+    profile = {
+        "recent_positive": [{"movie_id": 10, "title": "Top Gun", "year": 1986, "genres": "Action", "rating": 5.0}],
+        "highest_rated": [{"movie_id": 20, "title": "Die Hard", "year": 1988, "genres": "Action", "rating": 5.0}],
+    }
+    movies = [{"movie_id": 1, "title": "Toy Story", "year": 1995, "genres": "Animation"}]
+    messages = build_explanation_messages(profile, movies, has_tmdb_metadata=True)
+    assert messages[0]["content"] == EXPLAIN_SYSTEM_TMDB
+    user_content = messages[1]["content"]
+    assert "[RECENT_POSITIVE]" in user_content
+    assert "Top Gun" in user_content
+    assert "[HIGHEST_RATED]" in user_content
+    assert "Die Hard" in user_content
+
+
