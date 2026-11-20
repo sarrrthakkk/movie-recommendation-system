@@ -29,37 +29,130 @@ ranked_movie_ids must contain each allowed candidate ID exactly once and no othe
 """
 
 EXPLAIN_SYSTEM = """TASK: explain
-Write one-sentence explanations for the listed movies.
-Return JSON only:
+Write one-sentence personalized explanations for the listed recommended movies.
+Return JSON only, with exactly this structure:
 {"explanations": [{"movie_id": <int>, "explanation": "<one sentence containing the movie id>"}]}
 Rules:
 - Explain only the supplied movie IDs.
-- Each explanation is one sentence and includes the movie ID.
-- Use only the supplied training history and movie metadata.
-- Do not mention actors, directors, writers, or themes that were not provided.
+- Each explanation must be exactly ONE concise sentence containing TWO grounded parts:
+  1. An explicit connection to at least one exact movie title from the user's [RECENT_POSITIVE] list (or [HIGHEST_RATED] if no recent positive fits), stating the shared theme, tone, or genre.
+  2. Grounded metadata for the recommended film including its exact movie_id and listed genres.
+- Never write a standalone synopsis without linking to a specific movie title from the user's history.
+- Never cite the recommended movie itself as an example of the user's past viewing history.
+- Use ONLY genre words explicitly listed on that recommended movie's catalog line; do not introduce unlisted genre labels or genre adjectives (for example, do not describe a Drama/Thriller as a "crime" film or a Crime/Drama as "comedic").
+- Use only the supplied training history and movie metadata. Do not mention actors, directors, writers, or themes that were not provided.
+- Do not claim certainty about the user.
+- Do not mention scores, model internals, validation labels, or test labels.
+"""
+
+EXPLAIN_SYSTEM_TMDB = """TASK: explain
+Write one-sentence personalized explanations for the listed recommended movies.
+Return JSON only, with exactly this structure:
+{"explanations": [{"movie_id": <int>, "explanation": "<one sentence containing the movie id>"}]}
+Rules:
+- Explain only the supplied movie IDs.
+- Each explanation must be exactly ONE concise sentence containing TWO grounded parts:
+  1. An explicit connection to at least one exact movie title from the user's [RECENT_POSITIVE] list (or [HIGHEST_RATED] if no recent positive fits), stating the shared theme, tone, or genre.
+  2. Grounded metadata for the recommended film including its exact movie_id plus its supplied plot, director, or cast details.
+- Never write a standalone synopsis without linking to a specific movie title from the user's history.
+- Never cite the recommended movie itself as an example of the user's past viewing history.
+- Use ONLY genre words explicitly listed on that recommended movie's catalog line; do not introduce unlisted genre labels or genre adjectives (for example, do not describe a Drama/Thriller as a "crime" film or a Crime/Drama as "comedic").
+- Use only the supplied training history and movie metadata. Ground explanations in the supplied plot, director, cast, and genres. Do not mention unprovided facts.
 - Do not claim certainty about the user.
 - Do not mention scores, model internals, validation labels, or test labels.
 """
 
 
-def _fmt_movie(row: dict, include_rating: bool) -> str:
+def truncate_plot(overview: str, max_chars: int = 220) -> str:
+    """Collapse whitespace and truncate overview cleanly at a word boundary."""
+    if not overview:
+        return ""
+    text = " ".join(overview.strip().split())
+    if len(text) <= max_chars:
+        return text
+    truncated = text[:max_chars]
+    if text[max_chars] == " ":
+        return truncated.rstrip()
+    last_space = truncated.rfind(" ")
+    if last_space > 0:
+        return truncated[:last_space].rstrip()
+    return truncated.rstrip()
+
+
+def _format_meta_suffix(meta: dict | None, max_plot_chars: int = 220) -> str:
+    if not meta:
+        return ""
+    parts: list[str] = []
+    director = meta.get("director")
+    if director:
+        if isinstance(director, (list, tuple)):
+            director_str = ", ".join(str(d).strip() for d in director if d).replace("|", "/")
+        else:
+            director_str = str(director).strip().replace("|", "/")
+        if director_str and director_str != "None":
+            parts.append(f"director={director_str}")
+
+    top_cast = meta.get("top_cast") or meta.get("cast")
+    if top_cast:
+        if isinstance(top_cast, (list, tuple)):
+            cast_str = ", ".join(str(c).strip() for c in top_cast if c).replace("|", "/")
+        else:
+            cast_str = str(top_cast).strip().replace("|", "/")
+        if cast_str and cast_str != "None":
+            parts.append(f"cast={cast_str}")
+
+    overview = meta.get("overview") or meta.get("plot")
+    if overview:
+        plot_str = truncate_plot(str(overview), max_chars=max_plot_chars).replace("|", "/")
+        if plot_str and plot_str != "None":
+            parts.append(f"plot={plot_str}")
+
+    if parts:
+        return " | " + " | ".join(parts)
+    return ""
+
+
+def _fmt_movie(
+    row: dict,
+    include_rating: bool,
+    meta: dict | None = None,
+    max_plot_chars: int = 220,
+) -> str:
     title = str(row.get("title", "")).replace("|", "/")
     year = "unknown" if row.get("year") in (None, "") else row["year"]
     genres = str(row.get("genres") or "none").replace("|", ", ")
     base = f"- id={int(row['movie_id'])} | {title} | {year} | {genres}"
     if include_rating:
         return f"{base} | rating={float(row['rating']):.1f}"
-    return base
+    if meta is None and any(k in row for k in ("director", "top_cast", "cast", "overview", "plot")):
+        meta = row
+    return f"{base}{_format_meta_suffix(meta, max_plot_chars)}"
 
 
-def _section(name: str, rows: list[dict], include_rating: bool) -> str:
+def _section(
+    name: str,
+    rows: list[dict],
+    include_rating: bool,
+    tmdb_metadata: dict[int, dict] | None = None,
+    max_plot_chars: int = 220,
+) -> str:
     if not rows:
         return f"[{name}]\n- none"
-    lines = "\n".join(_fmt_movie(row, include_rating) for row in rows)
-    return f"[{name}]\n{lines}"
+    lines = []
+    for row in rows:
+        meta = None
+        if not include_rating and tmdb_metadata is not None:
+            meta = tmdb_metadata.get(int(row["movie_id"]))
+        lines.append(_fmt_movie(row, include_rating, meta=meta, max_plot_chars=max_plot_chars))
+    return f"[{name}]\n" + "\n".join(lines)
 
 
-def build_rerank_messages(profile: dict, candidates: list[dict]) -> list[dict[str, str]]:
+def build_rerank_messages(
+    profile: dict,
+    candidates: list[dict],
+    tmdb_metadata: dict[int, dict] | None = None,
+    max_plot_chars: int = 220,
+) -> list[dict[str, str]]:
     preferred = profile.get("preferred_genres") or []
     if preferred:
         preferred_text = ", ".join(f"{item['genre']} ({item['share']:.2f})" for item in preferred)
@@ -72,7 +165,13 @@ def build_rerank_messages(profile: dict, candidates: list[dict]) -> list[dict[st
             _section("HIGHEST_RATED", profile.get("highest_rated", []), True),
             _section("LOWEST_RATED", profile.get("lowest_rated", []), True),
             _section("RECENT_POSITIVE", profile.get("recent_positive", []), True),
-            _section("CANDIDATES", candidates, False),
+            _section(
+                "CANDIDATES",
+                candidates,
+                False,
+                tmdb_metadata=tmdb_metadata,
+                max_plot_chars=max_plot_chars,
+            ),
             f"There are {len(candidates)} candidates. Return each candidate id exactly once.",
         ]
     )
@@ -82,13 +181,25 @@ def build_rerank_messages(profile: dict, candidates: list[dict]) -> list[dict[st
     ]
 
 
-def build_repair_messages(profile: dict, candidates: list[dict], invalid_response: str) -> list[dict[str, str]]:
+def build_repair_messages(
+    profile: dict,
+    candidates: list[dict],
+    invalid_response: str,
+    tmdb_metadata: dict[int, dict] | None = None,
+    max_plot_chars: int = 220,
+) -> list[dict[str, str]]:
     allowed = ", ".join(str(int(row["movie_id"])) for row in candidates)
     user = "\n\n".join(
         [
             "Fix the ranking.",
             f"[ALLOWED_IDS]\n{allowed}",
-            _section("CANDIDATES", candidates, False),
+            _section(
+                "CANDIDATES",
+                candidates,
+                False,
+                tmdb_metadata=tmdb_metadata,
+                max_plot_chars=max_plot_chars,
+            ),
             "[INVALID_RESPONSE]\n" + invalid_response[:2000],
         ]
     )
@@ -98,22 +209,49 @@ def build_repair_messages(profile: dict, candidates: list[dict], invalid_respons
     ]
 
 
-def build_explanation_messages(profile: dict, movies: list[dict]) -> list[dict[str, str]]:
-    requested = "\n".join(
-        f"- movie_id={int(row['movie_id'])} | {str(row.get('title', '')).replace('|', '/')} | "
-        f"{row.get('year') or 'unknown'} | {str(row.get('genres') or 'none').replace('|', ', ')}"
-        for row in movies
-    )
-    history = _section("HIGHEST_RATED", profile.get("highest_rated", []), True)
+def build_explanation_messages(
+    profile: dict,
+    movies: list[dict],
+    tmdb_metadata: dict[int, dict] | None = None,
+    max_plot_chars: int = 220,
+    has_tmdb_metadata: bool = False,
+) -> list[dict[str, str]]:
+    has_meta = has_tmdb_metadata or bool(tmdb_metadata)
+    lines = []
+    for row in movies:
+        m_id = int(row["movie_id"])
+        meta = tmdb_metadata.get(m_id) if tmdb_metadata else None
+        if not meta and any(k in row for k in ("director", "top_cast", "cast", "overview", "plot")):
+            meta = row
+            has_meta = True
+        line = (
+            f"- movie_id={m_id} | {str(row.get('title', '')).replace('|', '/')} | "
+            f"{row.get('year') or 'unknown'} | {str(row.get('genres') or 'none').replace('|', ', ')}"
+        )
+        suffix = _format_meta_suffix(meta, max_plot_chars)
+        lines.append(f"{line}{suffix}")
+
+    requested = "\n".join(lines)
+    history_sections = []
+    recent_pos = profile.get("recent_positive", [])
+    if recent_pos:
+        history_sections.append(_section("RECENT_POSITIVE", recent_pos, True))
+    highest = profile.get("highest_rated", [])
+    if highest:
+        history_sections.append(_section("HIGHEST_RATED", highest, True))
+    if not history_sections:
+        history_sections.append("[HIGHEST_RATED]\n- none")
+    history_text = "\n\n".join(history_sections)
     user = "\n\n".join(
         [
             "Explain these recommendations.",
-            history,
+            history_text,
             "[MOVIES]\n" + requested,
         ]
     )
+    system_prompt = EXPLAIN_SYSTEM_TMDB if has_meta else EXPLAIN_SYSTEM
     return [
-        {"role": "system", "content": EXPLAIN_SYSTEM},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": user},
     ]
 

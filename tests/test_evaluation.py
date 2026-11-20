@@ -7,6 +7,7 @@ import math
 import numpy as np
 import pandas as pd
 
+from movie_recommender.candidates import sample_stratified_user_ids, sample_user_ids
 from movie_recommender.evaluation import (
     bootstrap_ci,
     catalog_coverage,
@@ -69,3 +70,67 @@ def test_per_user_frame_contains_requested_cutoffs():
     assert frame.loc[0, "hit@5"] == 1
     assert frame.loc[0, "mrr"] == 0.5
     assert frame.loc[0, "novelty@5"] > 0
+
+
+def test_sample_user_ids_behavior_unchanged():
+    users = [10, 5, 20, 15, 30, 25]
+    assert np.array_equal(sample_user_ids(users, n=10, seed=42), np.array([5, 10, 15, 20, 25, 30]))
+    sampled = sample_user_ids(users, n=3, seed=42)
+    assert len(sampled) == 3
+    assert np.array_equal(sampled, np.sort(sampled))
+    sampled2 = sample_user_ids(users, n=3, seed=42)
+    assert np.array_equal(sampled, sampled2)
+
+
+def test_sample_stratified_user_ids_deterministic_and_tier_balance():
+    train_rows = []
+    for u in range(1, 151):
+        for m in range(u):
+            train_rows.append({"user_id": u, "movie_id": m + 1})
+    train_df = pd.DataFrame(train_rows)
+    eligible = list(range(1, 151))
+
+    sampled1, tiers1 = sample_stratified_user_ids(train_df, eligible, n=100, seed=42)
+    sampled2, tiers2 = sample_stratified_user_ids(train_df, eligible, n=100, seed=42)
+
+    assert np.array_equal(sampled1, sampled2)
+    assert tiers1 == tiers2
+    assert len(sampled1) == 100
+    assert np.array_equal(sampled1, np.sort(sampled1))
+    assert len(tiers1) == 150
+    assert set(tiers1.values()) == {"low", "medium", "high"}
+
+    tier_counts = {
+        tier: sum(1 for u in sampled1 if tiers1[int(u)] == tier)
+        for tier in ("low", "medium", "high")
+    }
+    assert tier_counts["low"] == 34
+    assert tier_counts["medium"] == 33
+    assert tier_counts["high"] == 33
+
+    for u in range(1, 51):
+        assert tiers1[u] == "low"
+    for u in range(51, 101):
+        assert tiers1[u] == "medium"
+    for u in range(101, 151):
+        assert tiers1[u] == "high"
+
+
+def test_sample_stratified_user_ids_edge_cases():
+    train_df = pd.DataFrame([{"user_id": 1, "movie_id": 10}, {"user_id": 2, "movie_id": 20}])
+    eligible = [1, 2]
+
+    sampled, tiers = sample_stratified_user_ids(train_df, eligible, n=5, seed=42)
+    assert np.array_equal(sampled, np.array([1, 2]))
+    assert len(tiers) == 2
+
+    sampled_exact, _ = sample_stratified_user_ids(train_df, eligible, n=2, seed=42)
+    assert np.array_equal(sampled_exact, np.array([1, 2]))
+
+    sampled_zero, tiers_zero = sample_stratified_user_ids(train_df, eligible, n=0, seed=42)
+    assert len(sampled_zero) == 0
+    assert len(tiers_zero) == 2
+
+    sampled_empty, tiers_empty = sample_stratified_user_ids(train_df, [], n=10, seed=42)
+    assert len(sampled_empty) == 0
+    assert tiers_empty == {}

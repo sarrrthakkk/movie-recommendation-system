@@ -114,9 +114,11 @@ class OpenAICompatibleClient:
         base_url: str,
         timeout: float,
         transport: httpx.BaseTransport | None = None,
+        max_tokens: int | None = None,
     ) -> None:
         if not api_key or not base_url:
             raise ValueError("API key and base URL are required")
+        self.max_tokens = max_tokens
         self._url = chat_completions_url(base_url)
         self._client = httpx.Client(
             timeout=timeout,
@@ -135,7 +137,9 @@ class OpenAICompatibleClient:
         temperature: float,
         timeout: float | None = None,
     ) -> str:
-        payload = {"model": model, "temperature": temperature, "messages": messages}
+        payload: dict[str, Any] = {"model": model, "temperature": temperature, "messages": messages}
+        if self.max_tokens is not None:
+            payload["max_tokens"] = self.max_tokens
         limit = self._client.timeout if timeout is None else timeout
         prompt_chars = sum(len(message.get("content", "")) for message in messages)
         logger.info(

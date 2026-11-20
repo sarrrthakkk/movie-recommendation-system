@@ -18,6 +18,64 @@ def sample_user_ids(user_ids: np.ndarray | list[int], n: int, seed: int) -> np.n
     return np.sort(chosen.astype(int))
 
 
+def sample_stratified_user_ids(
+    train_df: pd.DataFrame,
+    eligible_user_ids: np.ndarray | list[int] | pd.Series,
+    n: int,
+    seed: int,
+) -> tuple[np.ndarray, dict[int, str]]:
+    """Sample user IDs stratified evenly across 3 activity tertiles (low, medium, high).
+
+    Computes each eligible user's training interaction count from `train_df`,
+    sorts eligible users deterministically by `(interaction_count, user_id)`,
+    splits eligible users into 3 balanced tertiles (`low`, `medium`, `high`) using `np.array_split`,
+    and samples evenly across the tiers using `np.random.default_rng(seed)`
+    (for `n=100`: 34 low, 33 medium, 33 high; if `n >= len(eligible_user_ids)`, returns all eligible users).
+    """
+    unique_eligible = sorted(set(int(user_id) for user_id in eligible_user_ids))
+    if not unique_eligible:
+        return np.array([], dtype=int), {}
+
+    counts_map = (
+        train_df["user_id"].value_counts().to_dict()
+        if "user_id" in train_df.columns
+        else {}
+    )
+    user_tuples = [(int(counts_map.get(u, 0)), u) for u in unique_eligible]
+    user_tuples.sort(key=lambda item: (item[0], item[1]))
+    sorted_users = np.array([u for _, u in user_tuples], dtype=int)
+
+    low_users, med_users, high_users = np.array_split(sorted_users, 3)
+    user_tiers: dict[int, str] = {}
+    for u in low_users:
+        user_tiers[int(u)] = "low"
+    for u in med_users:
+        user_tiers[int(u)] = "medium"
+    for u in high_users:
+        user_tiers[int(u)] = "high"
+
+    if n >= len(sorted_users):
+        return np.sort(sorted_users.astype(int)), user_tiers
+
+    if n <= 0:
+        return np.array([], dtype=int), user_tiers
+
+    rng = np.random.default_rng(seed)
+    tier_arrays = [low_users, med_users, high_users]
+    base = n // 3
+    rem = n % 3
+    tier_targets = [base + (1 if i < rem else 0) for i in range(3)]
+    sampled_chunks: list[np.ndarray] = []
+    for tier_arr, target in zip(tier_arrays, tier_targets):
+        k = min(len(tier_arr), target)
+        if k > 0:
+            chosen = rng.choice(tier_arr, size=k, replace=False)
+            sampled_chunks.append(chosen)
+
+    sampled_ids = np.sort(np.concatenate(sampled_chunks).astype(int))
+    return sampled_ids, user_tiers
+
+
 def movie_lookup(movies: pd.DataFrame) -> dict[int, dict]:
     lookup: dict[int, dict] = {}
     for row in movies.itertuples(index=False):
