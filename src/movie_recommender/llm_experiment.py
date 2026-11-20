@@ -28,6 +28,7 @@ from movie_recommender.llm.client import (
     OpenAICompatibleClient,
     SQLiteCache,
     llm_credentials,
+    load_llm_environment,
     request_interval_seconds,
 )
 from movie_recommender.llm.explanations import explain_movies, template_explanation
@@ -347,6 +348,7 @@ def run_llm_evaluation(
 
 
 def _make_gateway(config: AppConfig, *, artifacts: Path, mock: bool, dry_run: bool, maximum_api_calls: int | None, refresh_cache: bool):
+    load_llm_environment()
     cache = SQLiteCache(artifacts / "cache" / "llm_cache.sqlite")
     model = config.llm.model
     if os.environ.get("LLM_MODEL", "").strip():
@@ -758,6 +760,7 @@ def _execute(
     result = {
         "result_type": result_type,
         "mock_llm": mock,
+        "model": gateway.model,
         "prompt_version": PROMPT_VERSION,
         "seed": config.seed,
         "n_users": int(len(sampled)),
@@ -784,7 +787,7 @@ def _execute(
         "llm_disabled_behavior": "If the API is unavailable, reranking keeps the hybrid order.",
         "caveat": (
             "The LLM can only reorder the hybrid candidate set, so it cannot recover a relevant movie "
-            "that the hybrid model did not nominate. Mock-client numbers are not measurements of qwen35-27b. "
+            f"that the hybrid model did not nominate. Mock-client numbers are not measurements of {gateway.model}. "
             "A bootstrap interval is not a p-value. A small public dataset cannot establish online satisfaction."
         ),
     }

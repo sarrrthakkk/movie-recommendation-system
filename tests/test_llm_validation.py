@@ -687,3 +687,69 @@ def test_missing_tmdb_cache_falls_back_to_genre_only(tmp_path):
     cfg.llm.tmdb_cache_path = str(tmp_path / "non_existent_cache.json")
     assert cfg.llm.use_tmdb_metadata is True
     assert not Path(cfg.llm.tmdb_cache_path).exists()
+
+
+def test_llm_model_env_override_and_rendered_report(tmp_path, monkeypatch):
+    from movie_recommender.config import AppConfig
+    from movie_recommender.llm_experiment import _append_llm_markdown, _make_gateway
+
+    config = AppConfig()
+    assert config.llm.model == "qwen35-27b"
+
+    # 1. Without LLM_MODEL set, YAML default is preserved
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.setattr("movie_recommender.llm_experiment.load_llm_environment", lambda: None)
+    gw_default, _ = _make_gateway(
+        config,
+        artifacts=tmp_path,
+        mock=True,
+        dry_run=False,
+        maximum_api_calls=None,
+        refresh_cache=False,
+    )
+    assert gw_default.model == "qwen35-27b"
+
+    # 2. With LLM_MODEL set in env, it overrides YAML default
+    monkeypatch.setenv("LLM_MODEL", "gemini-3.1-flash-lite")
+    gw_env, _ = _make_gateway(
+        config,
+        artifacts=tmp_path,
+        mock=True,
+        dry_run=False,
+        maximum_api_calls=None,
+        refresh_cache=False,
+    )
+    assert gw_env.model == "gemini-3.1-flash-lite"
+
+    # 3. Report rendered text reflects the overridden model name
+    report_file = tmp_path / "results_table.md"
+    result = {
+        "caveat": (
+            "The LLM can only reorder the hybrid candidate set, so it cannot recover a relevant movie "
+            f"that the hybrid model did not nominate. Mock-client numbers are not measurements of {gw_env.model}. "
+            "A bootstrap interval is not a p-value. A small public dataset cannot establish online satisfaction."
+        ),
+        "result_type": "full",
+        "mock_llm": True,
+        "n_users": 10,
+        "paired_ndcg@10_llm_minus_hybrid": {
+            "mean": 0.01,
+            "low": -0.01,
+            "high": 0.03,
+            "excludes_zero": False,
+            "reading": "inconclusive",
+        },
+        "top1_change_rate": 0.2,
+        "mean_abs_rank_displacement": 1.5,
+        "invalid_response_rate": 0.0,
+        "fallback_rate": 0.0,
+        "cache_hit_rate": 0.0,
+        "average_request_latency_s": 0.5,
+        "average_prompt_tokens": 1500.0,
+        "api_calls": 10,
+    }
+    _append_llm_markdown(report_file, result)
+    content = report_file.read_text(encoding="utf-8")
+    assert "Mock-client numbers are not measurements of gemini-3.1-flash-lite." in content
+    assert "qwen35-27b" not in content
+
