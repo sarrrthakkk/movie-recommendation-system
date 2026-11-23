@@ -1,0 +1,33 @@
+{
+  "rows_read": 100000,
+  "duplicate_rows": 0,
+  "rows_after_dedup": 100000,
+  "duplicate_pairs_resolved": 0,
+  "n_users": 943,
+  "n_movies": 1682,
+  "n_ratings": 100000,
+  "genre_dimensions": 19,
+  "missing_year": 1,
+  "sparsity": 0.9369533063577546,
+  "rating_distribution": {
+    "1": 6110,
+    "2": 11370,
+    "3": 27145,
+    "4": 34174,
+    "5": 21201
+  },
+  "n_eligible_users": 938,
+  "n_removed_users": 5,
+  "removed_users": {
+    "fewer_than_two_relevant": 1,
+    "insufficient_positive_training_history": 4
+  },
+  "n_train_interactions": 94527,
+  "n_validation_interactions": 938,
+  "n_test_interactions": 938,
+  "n_discarded_interactions": 3597,
+  "relevance_threshold": 4.0,
+  "minimum_positive_interactions": 3,
+  "split_rule": "Per user, sort by timestamp then movie id. Test is the latest relevant rating. Validation is the second-latest relevant rating. Training is every interaction strictly before the validation key.",
+  "seed": 42
+}

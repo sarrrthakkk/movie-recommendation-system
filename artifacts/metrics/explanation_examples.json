@@ -1,0 +1,272 @@
+[
+  {
+    "user_id": 4,
+    "fallback_reason": "none",
+    "explanations": [
+      {
+        "movie_id": 100,
+        "explanation": "Like the Drama in One Flew Over the Cuckoo's Nest, movie_id 100 is a Crime, Drama, Thriller directed by Joel Coen about a car salesman whose schemes spiral out of control."
+      },
+      {
+        "movie_id": 302,
+        "explanation": "Sharing the Mystery genre with Lost Highway, movie_id 302 is a Crime, Film-Noir, Mystery, Thriller where three detectives uncover a conspiracy in the 1950s L.A."
+      },
+      {
+        "movie_id": 12,
+        "explanation": "Similar to the Thriller elements of Event Horizon, movie_id 12 is a Crime, Thriller directed by Bryan Singer involving a survivor recounting a heist gone wrong."
+      },
+      {
+        "movie_id": 98,
+        "explanation": "Like the Drama in One Flew Over the Cuckoo's Nest, movie_id 98 is a Drama, Thriller featuring Clarice Starling interviewing the psychopath Dr."
+      },
+      {
+        "movie_id": 79,
+        "explanation": "Sharing the Action and Thriller genres with Event Horizon, movie_id 79 is an Action, Thriller starring Harrison Ford as a man escaping the law to find a real killer."
+      }
+    ],
+    "mock": false
+  },
+  {
+    "user_id": 8,
+    "fallback_reason": "none",
+    "explanations": [
+      {
+        "movie_id": 318,
+        "explanation": "Like Full Metal Jacket, movie_id 318 is a Drama and War film directed by Steven Spielberg about Oskar Schindler saving Jewish lives during World War II."
+      },
+      {
+        "movie_id": 498,
+        "explanation": "Sharing the Action, Adventure, and War genres of Jurassic Park and Full Metal Jacket, movie_id 498 features a riverboat captain facing off a German warship."
+      },
+      {
+        "movie_id": 313,
+        "explanation": "Similar to the Action and Drama elements in Full Metal Jacket, movie_id 313 is an Action, Drama, and Romance film directed by James Cameron about life aboard the Titanic."
+      },
+      {
+        "movie_id": 483,
+        "explanation": "Like Miller's Crossing, movie_id 483 is a Drama featuring a cynical American expatriate in Morocco during 1941."
+      },
+      {
+        "movie_id": 64,
+        "explanation": "Similar to the Drama genre of Miller's Crossing, movie_id 64 follows banker Andy Dufresne's life at Shawshank prison."
+      }
+    ],
+    "mock": false
+  },
+  {
+    "user_id": 13,
+    "fallback_reason": "none",
+    "explanations": [
+      {
+        "movie_id": 134,
+        "explanation": "Like Primary Colors, movie_id 134 is a Drama featuring a powerful figure, directed by Orson Welles."
+      },
+      {
+        "movie_id": 496,
+        "explanation": "Similar to The Sweet Hereafter, movie_id 496 is a Drama about a man's impact on his community in Bedford Falls."
+      },
+      {
+        "movie_id": 136,
+        "explanation": "Sharing the Drama genre and political themes of Primary Colors, movie_id 136 follows Jefferson Smith as he battles political corruption."
+      },
+      {
+        "movie_id": 133,
+        "explanation": "Like Persuasion, movie_id 133 is a Romance and Drama involving a tumultuous relationship during the American Civil War."
+      },
+      {
+        "movie_id": 192,
+        "explanation": "Similar to The Sweet Hereafter, movie_id 192 is a Drama directed by Martin Scorsese about the life of boxer Jake LaMotta."
+      }
+    ],
+    "mock": false
+  },
+  {
+    "user_id": 19,
+    "fallback_reason": "none",
+    "explanations": [
+      {
+        "movie_id": 64,
+        "explanation": "Like Crash, movie_id 64 is a Drama featuring a plot where banker Andy Dufresne navigates life at Shawshank prison."
+      },
+      {
+        "movie_id": 427,
+        "explanation": "Similar to the Drama themes in Crash, movie_id 427 follows Scout Finch and her brother in Maycomb, Alabama."
+      },
+      {
+        "movie_id": 318,
+        "explanation": "Sharing the Drama genre with Crash, movie_id 318 is a War film directed by Steven Spielberg about Oskar Schindler saving Jewish lives."
+      },
+      {
+        "movie_id": 168,
+        "explanation": "Like A Fish Called Wanda, movie_id 168 is a Comedy featuring King Arthur and his Knights of the Round Table."
+      },
+      {
+        "movie_id": 173,
+        "explanation": "Sharing the Comedy and Romance genres with Groundhog Day, movie_id 173 is an Action and Adventure film directed by Rob Reiner."
+      }
+    ],
+    "mock": false
+  },
+  {
+    "user_id": 52,
+    "fallback_reason": "none",
+    "explanations": [
+      {
+        "movie_id": 64,
+        "explanation": "Like Gandhi, movie_id 64 is a Drama featuring a plot where Andy Dufresne uses his accounting skills while imprisoned in the 1940s."
+      },
+      {
+        "movie_id": 357,
+        "explanation": "Similar to the Drama of Gandhi, movie_id 357 is a Drama directed by Milo\u0161 Forman about a petty criminal who becomes a leader in a mental ward."
+      },
+      {
+        "movie_id": 134,
+        "explanation": "Sharing the Drama genre with Gandhi, movie_id 134 is a Drama directed by Orson Welles about newspaper magnate Charles Foster Kane."
+      },
+      {
+        "movie_id": 98,
+        "explanation": "Like the Drama of Gandhi, movie_id 98 is a Drama and Thriller featuring Jodie Foster as Clarice Starling interviewing Dr."
+      },
+      {
+        "movie_id": 483,
+        "explanation": "Similar to the War and Romance themes in The African Queen, movie_id 483 is a Drama, Romance, and War film directed by Michael Curtiz."
+      }
+    ],
+    "mock": false
+  },
+  {
+    "user_id": 70,
+    "fallback_reason": "none",
+    "explanations": [
+      {
+        "movie_id": 195,
+        "explanation": "Like Blade Runner, movie_id 195 is a Sci-Fi film directed by James Cameron featuring a cyborg assassin from a post-apocalyptic future."
+      },
+      {
+        "movie_id": 127,
+        "explanation": "Similar to Stand by Me, movie_id 127 is a Drama focusing on a chronicle of the fictional Italian-American Corleone crime family."
+      },
+      {
+        "movie_id": 22,
+        "explanation": "Like Lawrence of Arabia, movie_id 22 is an Action, Drama, and War film about Scottish warrior William Wallace leading a revolt."
+      },
+      {
+        "movie_id": 515,
+        "explanation": "Similar to Lawrence of Arabia, movie_id 515 is an Action, Drama, and War film about a German submarine crew during the Second World War."
+      },
+      {
+        "movie_id": 474,
+        "explanation": "Like Sleeper, movie_id 474 is a Sci-Fi and War film directed by Stanley Kubrick about politicians and generals trying to stop a nuclear strike."
+      }
+    ],
+    "mock": false
+  },
+  {
+    "user_id": 33,
+    "fallback_reason": "none",
+    "explanations": [
+      {
+        "movie_id": 302,
+        "explanation": "Like Desperate Measures, movie_id 302 is a Crime, Mystery, and Thriller featuring three detectives uncovering a conspiracy in the 1950s L.A."
+      },
+      {
+        "movie_id": 98,
+        "explanation": "Similar to Volcano, movie_id 98 is a Drama and Thriller directed by Jonathan Demme about an FBI student interviewing a violent psychopath."
+      },
+      {
+        "movie_id": 12,
+        "explanation": "Like Desperate Measures, movie_id 12 is a Crime and Thriller directed by Bryan Singer involving a heist and a criminal mastermind."
+      },
+      {
+        "movie_id": 79,
+        "explanation": "Similar to Event Horizon, movie_id 79 is an Action and Thriller where Richard Kimble escapes the law to find a real killer."
+      },
+      {
+        "movie_id": 100,
+        "explanation": "Like Desperate Measures, movie_id 100 is a Crime, Drama, and Thriller directed by Joel Coen about a car salesman whose schemes lead to violent crimes."
+      }
+    ],
+    "mock": false
+  },
+  {
+    "user_id": 75,
+    "fallback_reason": "none",
+    "explanations": [
+      {
+        "movie_id": 168,
+        "explanation": "Like Kingpin, movie_id 168 is a Comedy directed by Terry Gilliam featuring King Arthur and his Knights of the Round Table."
+      },
+      {
+        "movie_id": 173,
+        "explanation": "Similar to the Action and Adventure elements of The Fugitive, movie_id 173 is an Action, Adventure, Comedy, Romance film where Westley and Princess Buttercup overcome staggering odds."
+      },
+      {
+        "movie_id": 174,
+        "explanation": "Sharing the Action and Adventure genres of Starship Troopers, movie_id 174 follows archaeologist Indiana Jones as he locates the Ark of the Covenant."
+      },
+      {
+        "movie_id": 50,
+        "explanation": "Like Starship Troopers, movie_id 50 is an Action, Adventure, Sci-Fi, War film involving Luke Skywalker and Han Solo fighting Imperial forces."
+      },
+      {
+        "movie_id": 172,
+        "explanation": "Connecting to the Drama of To Kill a Mockingbird and the Action of The Fugitive, movie_id 172 is an Action, Adventure, Drama, Romance, Sci-Fi, War film where Luke Skywalker learns from Master Yoda."
+      }
+    ],
+    "mock": false
+  },
+  {
+    "user_id": 178,
+    "fallback_reason": "partial_template",
+    "explanations": [
+      {
+        "movie_id": 515,
+        "explanation": "Movie 515 (Boot, Das (1981)) is recommended because its listed genres (Action, Drama, War) overlap preferences in the supplied training history."
+      },
+      {
+        "movie_id": 528,
+        "explanation": "Similar to Platoon, movie_id 528 is a Drama and War film about a New York Times reporter covering the Cambodian Civil War."
+      },
+      {
+        "movie_id": 272,
+        "explanation": "Sharing the Drama genre with As Good As It Gets, movie_id 272 follows a working-class genius and the psychology professor who tries to reach him."
+      },
+      {
+        "movie_id": 357,
+        "explanation": "Like As Good As It Gets, movie_id 357 is a Drama about a petty criminal who fakes insanity to serve his sentence in a mental ward."
+      },
+      {
+        "movie_id": 14,
+        "explanation": "Similar to The Wedding Singer, movie_id 14 is a Drama and Romance film about an Italian postman who uses poetry to woo a local beauty."
+      }
+    ],
+    "mock": false
+  },
+  {
+    "user_id": 36,
+    "fallback_reason": "none",
+    "explanations": [
+      {
+        "movie_id": 98,
+        "explanation": "Like Spawn, movie_id 98 is a Thriller featuring a violent psychopath interviewed by Clarice Starling."
+      },
+      {
+        "movie_id": 100,
+        "explanation": "Similar to Mad City, movie_id 100 is a Drama and Thriller involving a car salesman whose schemes spiral out of control."
+      },
+      {
+        "movie_id": 12,
+        "explanation": "Like Spawn, movie_id 12 is a Thriller centered on a heist gone wrong and a criminal mastermind."
+      },
+      {
+        "movie_id": 603,
+        "explanation": "Similar to That Darn Cat!, movie_id 603 is a Mystery and Thriller about a man convinced his neighbor committed murder."
+      },
+      {
+        "movie_id": 64,
+        "explanation": "Like Washington Square, movie_id 64 is a Drama about Andy Dufresne beginning a new life at Shawshank prison."
+      }
+    ],
+    "mock": false
+  }
+]

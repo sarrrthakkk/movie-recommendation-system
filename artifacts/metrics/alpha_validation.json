@@ -1,0 +1,32 @@
+[
+  {
+    "alpha": 1.0,
+    "ndcg@10": 0.03947938811596004,
+    "n_users": 938,
+    "distance_to_half": 0.5
+  },
+  {
+    "alpha": 0.75,
+    "ndcg@10": 0.038457330178936155,
+    "n_users": 938,
+    "distance_to_half": 0.25
+  },
+  {
+    "alpha": 0.5,
+    "ndcg@10": 0.03285293107633348,
+    "n_users": 938,
+    "distance_to_half": 0.0
+  },
+  {
+    "alpha": 0.25,
+    "ndcg@10": 0.022732179785009833,
+    "n_users": 938,
+    "distance_to_half": 0.25
+  },
+  {
+    "alpha": 0.0,
+    "ndcg@10": 0.009765732351210693,
+    "n_users": 938,
+    "distance_to_half": 0.5
+  }
+]
