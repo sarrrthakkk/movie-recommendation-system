@@ -41,10 +41,26 @@ def _from_result(result: GenerationResult, candidates: list[int]) -> tuple[list[
     return completed, exact, summary
 
 
-def rerank_candidates(gateway: LLMGateway, profile: dict, candidates: list[dict]) -> RerankOutcome:
-    """Rerank ``candidates`` which must already be in hybrid-score order."""
-    original = _hybrid_ids(candidates)
-    messages = build_rerank_messages(profile, candidates)
+def rerank_candidates(
+    gateway: LLMGateway,
+    profile: dict,
+    candidates: list[dict],
+    original_candidates: list[dict] | None = None,
+    tmdb_metadata: dict[int, dict] | None = None,
+    max_plot_chars: int = 220,
+) -> RerankOutcome:
+    """Rerank ``candidates``.
+
+    If ``original_candidates`` is supplied, it provides the canonical hybrid order
+    used for membership validation, error fallbacks, and completing partial permutations.
+    """
+    original = _hybrid_ids(original_candidates if original_candidates is not None else candidates)
+    messages = build_rerank_messages(
+        profile,
+        candidates,
+        tmdb_metadata=tmdb_metadata,
+        max_plot_chars=max_plot_chars,
+    )
     prompt_tokens = prompt_token_estimate(messages)
     if prompt_tokens > TOKEN_WARNING_THRESHOLD:
         logger.warning("Rerank prompt estimates %d tokens, above the %d token budget", prompt_tokens, TOKEN_WARNING_THRESHOLD)
@@ -66,7 +82,13 @@ def rerank_candidates(gateway: LLMGateway, profile: dict, candidates: list[dict]
     if exact:
         return _outcome(ranked, summary, "none", False, cache_hit, latency, prompt_tokens, api_calls)
 
-    repair_messages = build_repair_messages(profile, candidates, first.text or "")
+    repair_messages = build_repair_messages(
+        profile,
+        candidates,
+        first.text or "",
+        tmdb_metadata=tmdb_metadata,
+        max_plot_chars=max_plot_chars,
+    )
     try:
         repair = gateway.generate(task="repair", messages=repair_messages)
     except BudgetExceeded:

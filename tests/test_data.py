@@ -10,6 +10,7 @@ from movie_recommender.config import AppConfig
 from movie_recommender.data import (
     EXPECTED_GENRE_DIM,
     DataValidationError,
+    discover_data_dir,
     load_movielens,
     load_processed,
     parse_movies,
@@ -83,8 +84,9 @@ def test_processed_roundtrip_preserves_genre_alignment(tmp_path):
 
 
 def test_real_movielens_if_present():
-    data_dir = project_root() / "ml-100k"
-    if not (data_dir / "u.data").exists():
+    try:
+        data_dir = discover_data_dir()
+    except FileNotFoundError:
         pytest.skip("Local MovieLens 100K directory is not present")
     ratings, movies, genres, report = load_movielens(data_dir)
     assert len(ratings) == 100_000

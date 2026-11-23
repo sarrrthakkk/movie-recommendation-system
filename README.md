@@ -1,23 +1,29 @@
-# Hybrid Movie Recommendation Using Matrix Factorization and LLM-Based Reranking
+# Hybrid Movie Recommendation Using Matrix Factorization and LLM Reranking
 
-Course project for one developer over four weeks. The repository root is the project root. A local `ml-100k/` directory was already present, so the code lives here instead of in a nested `movie-recommender/` folder.
+## Team FA26-Group14-Project8
 
-## Research question
+| Member             | Email            |
+| ------------------ | ---------------- |
+| Sarthak Mishra     | smish147@asu.edu |
+| Siddanagouda Patil | spati193@asu.edu |
+| Travis Andring     | tandring@asu.edu |
+| Shashwat Dwivedi   | sdwive18@asu.edu |
+| Dhanashree Somani  | dsomani3@asu.edu |
 
-Can LLM-based reranking improve the relevance, diversity, or interpretability of recommendations produced by a traditional hybrid movie recommender?
+## Overview and Research Question
 
-The comparison is:
+This repository builds and evaluates a two-stage movie recommendation pipeline on MovieLens 100K. Stage 1 trains classical popularity, biased matrix factorization, genre content, and hybrid models to retrieve a top-20 candidate set per user. Stage 2 uses a zero-shot LLM reranker enriched with TMDB metadata to reorder those candidates and generate one-sentence, history-grounded explanations.
 
-| ID | System | What it uses |
-| --- | --- | --- |
-| 1 | Popularity | Training counts and a Bayesian average |
-| 2 | Biased matrix factorization | Collaborative ratings only |
-| 3 | Genre content | Multi-hot genres and a weighted user profile |
-| 4 | Hybrid | Normalized MF plus content, with alpha chosen on validation |
-| 5 | Hybrid + LLM rerank | The hybrid top-20, reordered by an LLM |
-| 6 | Explanations | One sentence per final recommendation, with a template fallback |
+Our core research question is straightforward: can zero-shot LLM reranking improve ranking accuracy, beyond-accuracy metrics (novelty, coverage, popularity bias), or explanation quality over a classical hybrid recommender? Our evaluation treats negative or statistically inconclusive findings as valid outcomes and reports paired 95% bootstrap confidence intervals rather than assuming an LLM will win.
 
-A negative LLM result is a valid result. The code reports the measured difference and a bootstrap interval. It does not assume reranking helps.
+| ID  | System                      | What it uses                                                              |
+| --- | --------------------------- | ------------------------------------------------------------------------- |
+| 1   | Popularity                  | Training rating counts and a Bayesian average                             |
+| 2   | Biased matrix factorization | Collaborative ratings via PyTorch embeddings                              |
+| 3   | Genre content               | 19-dimensional multi-hot genres and weighted user profiles                |
+| 4   | Hybrid                      | Per-user min-max normalized MF + content, tuned on validation alpha       |
+| 5   | Hybrid + LLM rerank         | Top-20 hybrid candidates reordered by an OpenAI-compatible LLM            |
+| 6   | Grounded explanations       | One-sentence history-linked pitches with deterministic template fallbacks |
 
 ## Architecture
 
@@ -26,292 +32,310 @@ flowchart TD
   A[MovieLens 100K] --> B[Parse and validate]
   B --> C[Per-user chronological split]
   C --> D[Popularity, biased MF, genre content]
-  D --> E[Select alpha on validation NDCG at 10]
-  E --> F[Test ranking metrics once]
-  E --> G[Top 20 unseen hybrid candidates]
-  G --> H[LLM rerank]
+  D --> E[Select alpha on validation NDCG@10]
+  E --> F[Score full test set once]
+  E --> G[Top-20 unseen hybrid candidates]
+  T[TMDB Metadata Cache] --> H[LLM rerank and explanations]
+  G --> H
   H --> I{Valid permutation?}
   I -->|yes| J[LLM order]
-  I -->|no| K[One repair, then partial fill or hybrid order]
+  I -->|no| K[One repair call, then partial fill or hybrid order]
   F --> L[CSV, JSON, and plots]
   J --> L
   K --> L
-  D --> M[Streamlit]
+  D --> M[Streamlit demo]
   H --> M
 ```
 
-Provider-specific HTTP code is isolated in `OpenAICompatibleClient` inside [src/movie_recommender/llm/client.py](src/movie_recommender/llm/client.py). To support a different protocol, implement `ChatClient.chat` and pass that object to `LLMGateway`. The gateway already applies the cache, the rate limit, retries, and the call budget. This project does not pick a provider URL.
+All HTTP provider logic sits inside `OpenAICompatibleClient` in [src/movie_recommender/llm/client.py](src/movie_recommender/llm/client.py). To plug in a non-OpenAI provider later, implement `ChatClient.chat` and pass it into `LLMGateway`, which handles SQLite caching, request pacing, retries, and call budgets automatically.
 
-## Dataset
+## Dataset and TMDB Enrichment
 
-MovieLens 100K: 100,000 ratings from 943 users on 1,682 movies, collected by GroupLens from September 1997 through April 1998. Each user has at least 20 ratings. Ratings are integers from 1 to 5.
+The core dataset is **MovieLens 100K**: 100,000 integer ratings (1 to 5) from 943 users across 1,682 movies, collected by GroupLens between September 1997 and April 1998. Every user has at least 20 ratings.
 
-Files used:
+- `u.data`: tab-separated `user_id`, `movie_id`, `rating`, and Unix `timestamp`.
+- `u.item`: pipe-delimited movie metadata read as `latin-1`. The original GroupLens README claims this file is tab-separated, while the distributed archive uses pipes, so our parser accepts either delimiter whenever a row contains 24 fields. Release years are extracted from the trailing `(YYYY)` in each title, falling back to the release date column if needed.
 
-- `u.data`: tab-separated `user id`, `movie id`, `rating`, Unix `timestamp`
-- `u.item`: the original pipe-delimited movie file, read as latin-1. The GroupLens README text says the file is tab-separated; the distributed file is pipe-delimited. The parser accepts either delimiter when the row has 24 fields.
-- Columns: movie id, title, release date, empty video-release date, IMDb URL, and 19 genre flags from `unknown` through `Western`
+MovieLens 100K only provides titles and 19 coarse binary genre flags (`unknown` through `Western`). To test whether richer semantic context helps reranking and explanations, `scripts/fetch_tmdb_metadata.py` enriches the catalog via the TMDB API and caches results locally in `data/processed/tmdb_metadata.json` (1,682 movies indexed, with 1,670 movies or 99.3% carrying plot summaries alongside directors and top cast).
 
-The release year is parsed from the trailing `(YYYY)` in the title, then from the release date if needed.
-
-The dataset is not redistributed in git. `ml-100k/` and `data/raw/` are ignored. Cite Harper and Konstan, 2015, *The MovieLens Datasets: History and Context*, ACM TiiS.
+Raw MovieLens files (`ml-100k/` and `data/raw/`) are gitignored and not redistributed here. Cite Harper and Konstan (2015), _The MovieLens Datasets: History and Context_, ACM TiiS.
 
 ## Installation
 
-Python 3.11 or newer is required. This environment was exercised with Python 3.12 because current PyTorch wheels are more reliable there than on very new interpreters.
+Python 3.11 or newer is required. We built and tested the pipeline on Python 3.12 for stable PyTorch wheel support.
 
 ```bash
+git clone [https://github.com/sarrrthakkk/movie-recommendation-system.git](https://github.com/sarrrthakkk/movie-recommendation-system.git)
+cd movie-recommendation-system
+
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-`pip install -e .` also works. Scripts add `src/` to the import path, so an editable install is optional.
+`pip install -e .` also works, though every script adds `src/` to `sys.path` automatically so editable installation is optional.
 
-## API configuration
+## API Configuration
 
-Copy the example file and fill it in locally. Never commit the filled file.
+Copy `.env.example` to `.env` and fill in your local credentials. Never commit `.env`.
 
 ```bash
 cp .env.example .env
 ```
 
-```text
+```dotenv
 LLM_API_KEY=
 LLM_BASE_URL=
-LLM_MODEL=qwen35-27b
+LLM_MODEL=gemma4-31b-it
+TMDB_API_KEY=
 ```
 
-`LLM_BASE_URL` is the server root that prefixes `/chat/completions`. If the server already documents a base such as `https://host.example/v1`, use that value. Do not invent a host. The client posts to `{LLM_BASE_URL}/chat/completions` with `Authorization: Bearer <key>`.
+- `LLM_BASE_URL` is the server root prefixing `/chat/completions` (for example, `https://openai.rc.asu.edu/v1` or the Gemini OpenAI-compatible endpoint). The client posts to `{LLM_BASE_URL}/chat/completions` using `Authorization: Bearer <key>`.
+- `LLM_MODEL` resolves directly from `.env` and controls the active model ID (also included in every SQLite cache key so runs with different models never collide). Use a non-reasoning instruct model (such as `gemma4-31b-it` or `gemini-3.1-flash-lite`). Forced-thinking models (such as `glm-5-3`) can consume the fixed `max_tokens: 512` budget on internal reasoning tokens and truncate JSON output.
+- `TMDB_API_KEY` is only needed once to populate `data/processed/tmdb_metadata.json`.
 
-If either the key or the base URL is missing, live LLM calls are disabled and a clear error is logged. Popularity, matrix factorization, content, hybrid, and the Streamlit cold-start path keep working. Tests and `run_pipeline.py` use a mock client and do not read a real key.
+If `LLM_API_KEY` or `LLM_BASE_URL` is missing, live LLM calls stay disabled with a clear warning while all classical models, tests, and the Streamlit cold-start demo continue running. API keys are never written to SQLite, never printed in logs, and stripped if they ever appear in error strings.
 
-The key is not hard-coded, not written to the SQLite cache, and stripped from log lines if it ever appears. Request headers are not logged. HTTP errors are re-raised as short status messages without the request object.
+## Data Split
 
-## Data split
+A movie counts as relevant if the user rated it 4 or 5. For each user:
 
-Relevant means rating greater than or equal to 4.
+1. Sort all interactions by timestamp, breaking ties by `movie_id`.
+2. Hold out the latest relevant interaction as the test item.
+3. Hold out the second-latest relevant interaction as the validation item.
+4. Keep interactions strictly before the validation timestamp as the training set.
+5. Drop any user with fewer than 3 relevant ratings in training.
 
-For each user:
+Anything between validation and test, or after the test item, is discarded so no future information leaks into training or evaluation. Running `prepare_data.py` produces **938 eligible users** (5 dropped), **94,527 training ratings**, **938 validation items**, **938 test items**, and **3,597 discarded ratings** (matrix sparsity `0.937`), saved to `data/processed/` and `artifacts/metrics/split_summary.json`.
 
-1. Sort interactions by timestamp, then movie id.
-2. Find relevant interactions.
-3. Hold out the latest relevant interaction as the test item.
-4. Hold out the second-latest relevant interaction as the validation item.
-5. Train on interactions that sort strictly before the validation key.
-6. Drop the user unless that training history contains at least 3 relevant ratings.
-
-Interactions between validation and test, and anything after the test item, are discarded. They are not training features and they are not labels.
-
-Validation is used for matrix-factorization early stopping (RMSE) and for choosing alpha (NDCG@10). The test split is scored once after those choices. Sharing one validation set for both choices can make the validation ranking numbers slightly optimistic for the chosen epoch. That limitation is accepted and disclosed. There is no third nested split.
-
-`prepare_data.py` writes `data/processed/` and `artifacts/metrics/split_summary.json` with eligible users, train/validation/test counts, removed users, sparsity, and the rating distribution.
+Validation NDCG@10 governs both matrix-factorization early stopping and hybrid `alpha` selection, and the test split is evaluated once afterward. Sharing a single validation split for epoch stopping and `alpha` tuning can make validation scores slightly optimistic; we accept and disclose that trade-off rather than carving out a third split on a small dataset.
 
 ## Models
 
 ### Popularity
 
-Fit on training rows only. Two scores are available:
+Fit strictly on training rows, with seen movies filtered out and ties broken by smaller `movie_id`. Two variants are computed:
 
-- Positive count: number of training ratings at or above the relevance threshold.
-- Bayesian average with prior strength `C = 10` pseudo-ratings at the training global mean:
+- **Positive count**: number of training ratings `>= 4`.
+- **Bayesian average** (prior strength `C = 10` at training global mean `mu`):
+  ```text
+  bayes_i = (C * mu + sum of observed training ratings) / (C + n_i)
+  ```
+  Movies absent from training receive `mu` under the Bayesian score and `0` under positive count.
 
-```text
-bayes_i = (C * mu + sum of observed training ratings) / (C + n_i)
-```
-
-Movies with no training ratings get `mu` under the Bayesian score and 0 under the positive-count score. The reported popularity baseline uses the Bayesian score. Ties break toward the smaller movie id. Movies already in the user's training history are removed.
-
-### Biased matrix factorization
+### Biased Matrix Factorization
 
 ```text
 r_hat(u, i) = mu + b_u + b_i + p_u · q_i
 ```
 
-PyTorch embeddings for users and movies, plus both biases. `mu` is the training-rating mean. Every catalog movie has an item vector, including movies that never appear in training, so a cold item can still be scored. The objective on each mini-batch is mean squared error plus L2 on the batch embeddings and biases. Optimization is mini-batch SGD at the configured learning rate, with gradient clipping at 5. Early stopping restores the epoch with the best validation NDCG@10. Validation RMSE and MAE are still plotted and reported, but they are a poor stopping rule here: every validation label is a relevant rating of at least 4, so that RMSE is not on the same scale as training error. Checkpoints are `artifacts/models/mf.pt` and `artifacts/models/mf_metadata.json`.
+Implemented with PyTorch user/item embeddings and biases, covering every catalog item so cold items still receive a score. Training minimizes mini-batch MSE plus L2 regularization using SGD with gradient clipping at `5.0`, restoring the checkpoint with the best **validation NDCG@10**. Validation and test RMSE/MAE are logged as secondary rating metrics because every validation target is `>= 4`, making rating error a poor proxy for top-K ranking quality. Checkpoints save to `artifacts/models/mf.pt` and `artifacts/models/mf_metadata.json`. Device selection prefers CUDA, then Apple MPS, then CPU (`--smoke` defaults to CPU).
 
-CPU is the default for the smoke command. CUDA is used when available, then Apple MPS, then CPU. GPU kernels can still be nondeterministic; the seed is set anyway. RMSE and MAE are saved as secondary rating metrics. Ranking metrics are the primary comparison.
+### Genre Content
 
-### Content
-
-Each movie is a 19-dimensional multi-hot genre vector. A user's profile is the weighted average of training movies with
-
-```text
-w_ui = max(r_ui - 3, 0)
-```
-
-So a 4 contributes weight 1 and a 5 contributes weight 2. The movie score is cosine similarity. If the profile is all zeros, content scores fall back to the Bayesian popularity score and the run records that fallback. Seen movies are excluded.
+Each movie is represented by its 19-dimensional binary genre vector. A user's profile is the weighted average of their training movies using `w_ui = max(r_ui - 3, 0)` (rating 4 gets weight 1; rating 5 gets weight 2). Unseen items are ranked by cosine similarity, falling back to Bayesian popularity if a user's profile vector is all zeros.
 
 ### Hybrid
 
-Matrix-factorization scores and content scores are min-max normalized separately for each user over that user's unseen catalog. A constant score vector becomes 0.5 so it does not invent an order.
+MF and content scores are min-max normalized separately per user across their unseen catalog (constant vectors map to `0.5`):
 
 ```text
 s_hybrid(u, i) = alpha * s_MF(u, i) + (1 - alpha) * s_content(u, i)
 ```
 
-Alpha is chosen from `0.0, 0.25, 0.5, 0.75, 1.0` by mean validation NDCG@10. Ties prefer the value closest to 0.5, then the smaller alpha. The selected alpha is applied once on the test set.
+We select `alpha` from `{0.0, 0.25, 0.5, 0.75, 1.0}` on validation NDCG@10 (ties prefer the value closest to `0.5`, then smaller `alpha`) and apply it once on the test split.
 
-## LLM reranking
+## LLM Reranking and Explanations
 
-The LLM never scores the full catalog and is not trained or fine-tuned. It receives:
+The LLM never scans the full 1,682-movie catalog and is never fine-tuned. For each sampled user (100 stratified users: 34 low, 33 medium, 33 high activity), it receives:
 
-- up to 10 highest-rated training movies
-- up to 5 lowest-rated training movies
-- up to 5 most recent positively rated training movies
-- preferred genres from the training profile
-- exactly the hybrid candidate list, with title, year, and genres
+- Up to 10 highest-rated training movies (`[HIGHEST_RATED]`)
+- Up to 5 lowest-rated training movies (`[LOWEST_RATED]`)
+- Up to 5 most recent positively rated training movies (`[RECENT_POSITIVE]`)
+- Preferred genres from the training profile
+- Exactly `K` unseen hybrid candidates (default `K = 20`) with title, year, listed genres, and (when enabled) TMDB director, cast, and plot summary
 
-Numeric model scores stay in the candidate records for analysis and the UI. They are not placed in the prompt, so the model is not asked to copy the hybrid score. Held-out validation and test labels are not placed in the prompt. The builder raises if a held-out movie id is present in the history table.
+Numeric hybrid scores and held-out validation/test items are never placed in the prompt, and the prompt builder raises an error if a held-out item ever appears in user history. Average prompts sit around `2,327` tokens (well under typical context windows; the client logs a warning above `8,000` estimated tokens).
 
-Default prompts are far below the 262,100-token context window. The target is under about 8,000 tokens. A warning is logged if an estimate exceeds that. The estimate is characters divided by 4.
+### Strict JSON Validation and Fallback Chain
 
-The model must return JSON only:
+The reranker must return strict JSON containing `ranked_movie_ids` (an exact permutation of the supplied candidate IDs with no duplicates or extras) and a short `reasoning_summary`. If parsing or permutation checks fail:
 
-```json
-{
-  "ranked_movie_ids": [12, 45, 83],
-  "reasoning_summary": "Short general explanation of the ranking."
-}
-```
+1. Send one repair request.
+2. If the repair returns a valid permutation, use it.
+3. If the repair contains partial valid IDs, keep them and append missing candidates in hybrid order.
+4. If the repair has no valid IDs, apply the same partial completion to the initial response.
+5. If HTTP calls fail, time out after retries, or hit `--maximum-api-calls`, keep the hybrid order and log the exact `fallback_reason`.
 
-`reasoning_summary` is a short user-facing note, not hidden chain-of-thought. Validation requires a JSON object, ids drawn only from the candidate set, no duplicates, and every candidate exactly once.
+### Grounded Explanations (v2 Prompt)
 
-If validation fails:
+Explanations are generated for a 10-user stratified audit cohort (50 movie recommendations total, exported to `artifacts/metrics/manual_audit_explanations.csv`). Early testing (v1) revealed **metadata anchoring**: passing rich TMDB plots caused the model to write clean standalone synopses while ignoring user watch history on 34 of 44 non-fallback rows.
 
-1. One repair request is sent.
-2. If the repair is a valid permutation, it is used.
-3. If the repair contains some valid ids, those ids are kept and the missing candidates are appended in hybrid order.
-4. If the repair contains no valid ids, the same completion is applied to the original response.
-5. If the HTTP call fails, times out after retries, or the call budget is exhausted, the hybrid order is kept.
+The current v2 explanation prompt (`EXPLAIN_SYSTEM_TMDB` and `build_explanation_messages` in `src/movie_recommender/llm/prompts.py`) passes both `[RECENT_POSITIVE]` and `[HIGHEST_RATED]` history and enforces a two-part single-sentence structure:
 
-The fallback reason is stored. The API key is not.
+1. Explicitly reference at least one movie title from the user's history and explain the shared theme, tone, or genre.
+2. Include the recommended film's `movie_id` plus grounded plot, director, or cast metadata while restricting genre words strictly to the catalog's listed genres (preventing unlisted genre leakage, such as calling _The Silence of the Lambs_ a "crime" film when MovieLens tags it `Drama|Thriller`).
 
-Explanations, when requested, are one sentence, must mention the movie id, and may use only the supplied history and metadata. Mentions of actors, directors, certainty, hidden scores, or test labels are discarded in favor of a deterministic template.
+Any explanation violating schema, genre-grounding, or anti-leakage rules drops cleanly to a deterministic template fallback.
 
-### Cache, rate limit, and budget
+### Caching, Rate Limits, and Ablations
 
-The SQLite cache key is a hash of the model name, the prompt messages, the temperature, the task name (`rerank`, `repair`, or `explain`), and `PROMPT_VERSION` in `llm/prompts.py`. Bump that constant when the prompt text changes.
+- **SQLite Cache (`artifacts/cache/llm_cache.sqlite`)**: Keys hash the model name, exact messages, temperature (`0.0`), task (`rerank`, `repair`, `explain`), and `PROMPT_VERSION`. Interrupted runs resume from cache without repeating calls. Pass `--refresh-cache` to bypass reads.
+- **Pacing and Budgets**: Live uncached calls run serially with a `10.0` second minimum interval (6 RPM floor). Timeouts, HTTP 429, and HTTP 5xx responses retry with exponential backoff plus jitter; 401/403 errors fail fast. Live runs require `--confirm-api-calls` and stop cleanly at `--maximum-api-calls` (remaining users fall back to hybrid order with `budget_exhausted`).
+- **Ablation Suite (`--ablations`)**: Evaluates 6 variants per model on the same 100-user pool: primary (`llm_combined`, K=20, TMDB on), smaller pool (`llm_candidates_10`, K=10), history framing (`llm_highest_rated` and `llm_recent_positive`, both removing negative ratings), positional bias (`llm_k20_reverse`, reversed candidate list), and metadata value (`llm_k20_genre_only`, TMDB off).
 
-Cache lookups happen before rate limiting or a request. Successful normalized text is stored. `--refresh-cache` ignores reads and overwrites entries. An interrupted evaluation can be resumed because completed users are cache hits.
+## Evaluation Metrics
 
-Live uncached requests are serial. The gap is at least 10 seconds and also respects 6 requests per minute, so the floor is 10 seconds. Retries of timeouts, HTTP 429, and HTTP 5xx use exponential backoff plus jitter and the same spacing. Other HTTP errors are not retried. The mock client does not sleep, because it is not an API call.
+Under leave-one-out evaluation (1 held-out relevant movie per user):
 
-`--dry-run` prints the estimated uncached calls and does not contact a server. `--maximum-api-calls` stops cleanly; remaining users keep the hybrid order with reason `budget_exhausted`. A live run without `--confirm-api-calls` exits with status 2 after printing the estimate.
+- **HR@K (Hit Rate@K)**: `1` if the held-out movie appears in the top `K`, else `0` (identical to Recall@K here).
+- **NDCG@K**: `1 / log2(rank + 1)` if inside the top `K`, else `0`.
+- **MRR**: computed over the full unseen catalog (LLM reranked top-K head followed by the unchanged hybrid tail).
+- **Coverage@10**: fraction of the catalog appearing in at least one user's top 10.
+- **Diversity@10**: mean pairwise cosine distance among genre vectors in each user's top 10.
+- **Popularity@10**: mean training rating count of recommended items.
+- **Novelty@10**: mean `-log2(p_i)`, where `p_i` is the fraction of training users who rated item `i` (unrated items use `1 / (N + 1)`).
 
-The default sample is 100 eligible users, drawn with the configured seed and then sorted. Smoke runs use 25. Ablations on candidate size (10 vs 20) and history mode (highest-rated, recent positives, combined) run automatically for the mock client. They stay off for live calls unless `--ablations` is passed, because they multiply the request count. Explanations in the offline mock run are limited to five users.
+Confidence intervals are user-level 95% percentile bootstrap intervals (1,000 resamples by default). They are descriptive uncertainty bounds, not p-values. Because Stage 2 only reorders Stage 1's top 20, an LLM cannot recover a test item that MF missed completely.
 
-The mock reranker orders candidates by genre overlap with the prompt. Its metrics are a pipeline check, not a measurement of `qwen35-27b`.
+## Results
 
-## Metrics
+### Stage 1: Classical Models (Full 938-User Test Split)
 
-Leave-one-out, one relevant item:
+Full training selected `alpha = 1.0`, collapsing the classical hybrid to pure Biased MF on warm users because 19 binary genre indicators could not improve ranking accuracy over 50-factor collaborative embeddings. Secondary rating error for MF: Validation RMSE `0.9031` (MAE `0.7703`), Test RMSE `0.8694` (MAE `0.7384`).
 
-- Hit Rate@K and Recall@K are equal in this protocol. Both are 1 when the held-out movie is in the top K.
-- NDCG@K is `1 / log2(rank + 1)` when the item is inside K, else 0. Ideal DCG is 1.
-- MRR uses the full ranked list, not a truncated list. The LLM ranking is the reranked candidate head followed by the unchanged hybrid tail, so a movie outside the candidate set keeps its hybrid rank.
-- Catalog coverage is the fraction of the catalog that appears in some user's top K.
-- Genre diversity is the mean pairwise cosine distance among genre vectors in the top K, averaged over users.
-- Average popularity is the mean training interaction count of the recommended movies.
-- Novelty of an item is `-log2(p_i)`, where `p_i` is the fraction of training users who rated it. Unrated movies use `1 / (N + 1)`.
+| Model                       |      HR@10 |    NDCG@10 |        MRR | Coverage@10 | Diversity@10 | Novelty@10 |
+| --------------------------- | ---------: | ---------: | ---------: | ----------: | -----------: | ---------: |
+| `popularity_bayesian`       |     0.0405 |     0.0166 |     0.0165 |      0.0321 |       0.7399 |     2.3563 |
+| `popularity_positive_count` | **0.0682** | **0.0343** | **0.0334** |      0.0565 |       0.6853 |     1.2981 |
+| `matrix_factorization`      |     0.0586 |     0.0282 |     0.0259 |      0.0791 |       0.6564 |     1.5887 |
+| `content`                   |     0.0213 |     0.0105 |     0.0130 |  **0.2669** |       0.1334 | **4.5930** |
+| `hybrid` (`alpha = 1.0`)    |     0.0586 |     0.0282 |     0.0259 |      0.0791 |       0.6564 |     1.5887 |
 
-Bootstrap intervals are user-level percentile intervals from the configured number of resamples (1,000 by default, 200 in smoke). They are not p-values. The report states whether the 95% interval for the paired difference excludes zero, and whether that interval also lies entirely outside a descriptive margin of 0.01. A sample under 30 users is described as too small for a reliable conclusion.
+Raw positive-count popularity beats pointwise MSE MF on this chronological split because late-1990s blockbusters dominate users' most recent ratings. Content-based filtering delivers over 3x the catalog coverage and nearly 3x the novelty of MF at the cost of lower top-10 hit rate.
 
-The LLM can only reorder the hybrid candidate set. It cannot recover a relevant movie the hybrid model did not nominate. Hit rate can still change inside the top 5 or 10 when the relevant movie sits between ranks 6 and 20.
+### Stage 2: Live LLM Reranking & Ablations (100-User Stratified Sample)
 
-## Popularity buckets and sparse users
+We evaluated two live models on the exact same 100-user candidate pool (`hybrid_on_sample`: NDCG@10 `0.0278`, HR@10 `0.0700`, MRR `0.0223`): **`gemma4-31b-it`** hosted on ASU Research Computing (all 6 jobs complete: 629 calls, 7.65s avg latency, 0 retries, 0.0% reranking fallback rate) and **`gemini-3.1-flash-lite`** via the Gemini API (4 jobs complete; reverse-order and genre-only ablations queued for the final free-tier quota window).
 
-Training interaction counts, with movie id as a tie-break, split the catalog into three nearly equal groups: sparse tail, medium, and popular head. Test metrics are grouped by the bucket of the held-out movie.
+| Job                      |   K | History Profile | Order   | TMDB | `gemma4-31b-it` NDCG@10 (HR / MRR) | `gemini-3.1-flash-lite` NDCG@10 (HR / MRR) |
+| ------------------------ | --: | --------------- | ------- | ---- | ---------------------------------: | -----------------------------------------: |
+| `hybrid` (Stage 1)       |  20 | N/A             | hybrid  | No   |             0.0278 (0.07 / 0.0223) |                     0.0278 (0.07 / 0.0223) |
+| `llm_combined` (primary) |  20 | combined        | hybrid  | Yes  |         **0.0386** (0.07 / 0.0359) |                     0.0335 (0.06 / 0.0330) |
+| `llm_candidates_10`      |  10 | combined        | hybrid  | Yes  |             0.0388 (0.07 / 0.0362) |                 **0.0424** (0.07 / 0.0410) |
+| `llm_highest_rated`      |  20 | highest_rated   | hybrid  | Yes  |             0.0343 (0.07 / 0.0312) |                 **0.0443** (0.09 / 0.0364) |
+| `llm_recent_positive`    |  20 | recent_positive | hybrid  | Yes  |             0.0388 (0.08 / 0.0331) |                 **0.0451** (0.08 / 0.0411) |
+| `llm_k20_reverse`        |  20 | combined        | reverse | Yes  |         **0.0458** (0.07 / 0.0453) |                         Pending quota pass |
+| `llm_k20_genre_only`     |  20 | combined        | hybrid  | No   |         **0.0418** (0.07 / 0.0404) |                         Pending quota pass |
 
-A secondary check keeps only the earliest three positive training ratings, rebuilds the content profile, and compares content NDCG@10 on the same candidate pool. Matrix factorization is not retrained for that check, because the saved user embedding saw the full history. Genre metadata can help a short history. It cannot recommend for a user with no preference history.
+Key empirical findings from our live runs:
+
+- **Positive directional lift, wide sample uncertainty**: On the primary `llm_combined` setup, `gemma4-31b-it` lifted NDCG@10 by `+0.0109` (+39.2%, 95% CI `[-0.0132, +0.0348]`) and `gemini-3.1-flash-lite` lifted NDCG@10 by `+0.0057` (+20.5%, 95% CI `[-0.0187, +0.0305]`). Both bootstrap intervals cross zero at `N = 100`, so mean NDCG differences remain statistically inconclusive on 100 users.
+- **Clear beyond-accuracy shifts (`gemma4-31b-it` primary vs. hybrid)**: Popularity@10 dropped 13.3% (`330.74` to `286.81`), Novelty@10 rose 13.8% (`1.5898` to `1.8087`), and Coverage@10 rose 29.0% (`0.0452` to `0.0583`), with non-overlapping 95% intervals on popularity and novelty. Diversity@10 decreased 14.8% (`0.6499` to `0.5539`) because the LLM tightened recommendations around each user's preferred genres.
+- **Prompt design matters more than raw prompt length**: Removing `[LOWEST_RATED]` history boosted `gemini-3.1-flash-lite` sharply (`0.0451` NDCG@10 on `llm_recent_positive`, +62.2% over hybrid). On `gemma4-31b-it`, dropping TMDB plots (`llm_k20_genre_only`, `0.0418`) outperformed TMDB-enriched reranking (`0.0386`) by +8.0%, showing that a 31B model already encodes classic 1990s film semantics and benefits from shorter ranking prompts.
+- **Positional sensitivity is real**: Reversing candidate input order (`llm_k20_reverse`) moved `gemma4-31b-it` up to `0.0458` NDCG@10 (+18.5% over forward order, 0.98 top-1 change rate), confirming listwise order bias.
+
+### Explanation Audit (50 Recommendations Across 10 Stratified Users)
+
+Scoring the 50 audited rows on a 1 to 5 rubric (`factual_support`, `history_relevance`, `user_utility`) measured the direct effect of our v2 history-linking prompt fix on `gemini-3.1-flash-lite`:
+
+| Run                                 |   Fallback Rate | Factual Support (1-5) | History Relevance (1-5) | User Utility (1-5) |
+| ----------------------------------- | --------------: | --------------------: | ----------------------: | -----------------: |
+| `gemini-3.1-flash-lite` (v1 prompt) |    12.0% (6/50) |                  4.72 |                    1.54 |               2.80 |
+| `gemini-3.1-flash-lite` (v2 prompt) |     6.0% (3/50) |                  4.60 |        **4.10** (+2.56) |   **3.68** (+0.88) |
+| `gemma4-31b-it` (v2 prompt)         | **2.0% (1/50)** |    49/50 passed gates |         Pending scoring |    Pending scoring |
+
+Switching to the v2 prompt cut Gemini's fallback rate in half, eliminated all 4 `hallucinated_genre` rejections, and raised rows scoring 4 or 5 on history relevance from 8.0% (4/50) to 86.0% (43/50).
 
 ## Reproduction
+
+After completing [Installation](#installation) and [API Configuration](#api-configuration), run the pipeline in four steps.
+
+### 1. Data Preparation and TMDB Enrichment
+
+If MovieLens 100K is already downloaded at `./ml-100k`, skip `download_data.py` and pass `--data-dir ml-100k` to `prepare_data.py`:
 
 ```bash
 python scripts/download_data.py
 python scripts/prepare_data.py --data-dir data/raw/ml-100k
-python scripts/train_models.py --config configs/default.yaml
-python scripts/evaluate_models.py --config configs/default.yaml
-python scripts/evaluate_llm.py --config configs/default.yaml --dry-run
-python scripts/evaluate_llm.py --config configs/default.yaml --maximum-api-calls 100 --confirm-api-calls
-python scripts/run_pipeline.py --config configs/default.yaml --data-dir ml-100k
-streamlit run app/streamlit_app.py
-pytest
+python scripts/fetch_tmdb_metadata.py
 ```
 
-If MovieLens is already at `./ml-100k`, pass `--data-dir ml-100k`. The download script uses the GroupLens URL `https://files.grouplens.org/datasets/movielens/ml-100k.zip` and extracts into `data/raw/ml-100k`.
-
-Useful flags:
-
-- `--smoke` on `train_models.py`, `evaluate_llm.py`, and `run_pipeline.py` limits factorization to 5 epochs, 16 factors, patience 2, and the LLM sample to 25 users.
-- `--device cpu|cuda|mps|auto`
-- `--epochs` and `--latent-dimensions` on training
-- `--mock-llm`, `--dry-run`, `--refresh-cache`, `--maximum-api-calls`, `--confirm-api-calls`
-- `--sample-users`, `--ablations`, `--no-ablations`, `--explanations`
-
-`run_pipeline.py` prepares, trains, evaluates, and then runs the mock LLM evaluation. It does not make a live call. Live calls require `python scripts/evaluate_llm.py ... --confirm-api-calls` or `run_pipeline.py --live-llm --confirm-api-calls`.
-
-No real API call is made by the tests or by the default pipeline.
-
-## Streamlit
+### 2. Stage 1: Classical Baselines and Hybrid Model
 
 ```bash
-streamlit run app/streamlit_app.py
+python scripts/train_models.py --config configs/default.yaml
+python scripts/evaluate_models.py --config configs/default.yaml
 ```
 
-The app needs the processed tables and saved models. A new demo user searches for movies, assigns ratings, and can request popularity, content, hybrid, or hybrid plus LLM reranking.
+This writes the Stage 1 test table (`alpha = 1.0`, `hybrid` test NDCG@10 `0.0282`, test RMSE `0.8694`) and classical plots to `artifacts/metrics/` and `artifacts/plots/`.
 
-For that new user the hybrid score is `alpha * popularity + (1 - alpha) * content` after per-user normalization. The screen says this is a cold-start recommendation. There is no learned collaborative user embedding, and the matrix-factorization column is empty on purpose.
+### 3. Stage 2: Live LLM Reranking, Ablations, and Explanations
 
-An optional existing-user mode uses that user's training history and trained embedding. It does not display held-out ratings.
+Preview the uncached call count first (0 live calls), then verify your endpoint and JSON formatting on 3 users before starting the full 100-user benchmark:
 
-Mock LLM is on by default. Live reranking requires both a configured API and the confirmation checkbox. If the API is unavailable, the page warns and shows the non-LLM ranking. Explanation failures use the template.
+```bash
+# Dry run (0 live API calls)
+python scripts/evaluate_llm.py --config configs/default.yaml --ablations --explanations --dry-run
 
-## Artifacts
+# 3-user live preflight (up to 10 calls)
+python scripts/evaluate_llm.py --config configs/default.yaml \
+  --sample-users 3 --no-ablations --explanations \
+  --confirm-api-calls --maximum-api-calls 10 --request-timeout-seconds 300
+```
 
-| Path | Contents |
-| --- | --- |
-| `data/processed/` | Ratings, movies, genre matrix, train, validation, test, split summary |
-| `artifacts/models/` | Popularity JSON, genre matrix, MF checkpoint, selected alpha, run metadata |
-| `artifacts/cache/llm_cache.sqlite` | Response cache. No API key |
-| `artifacts/metrics/` | Comparison CSV and JSON, per-user metrics, alpha table, buckets, sparse-user check, LLM comparison, results markdown |
-| `artifacts/plots/` | Rating, activity, and popularity distributions; MF loss; alpha curve; model comparison; head/mid/tail; LLM displacement; quality versus API calls |
+Run the full 100-user evaluation across all 6 ablation jobs plus the 50-row explanation audit (~610 base calls, ~650 cap with repair buffer):
 
-Every artifact above is produced by the commands in this README. Smoke outputs set `result_type` to `smoke` or `smoke_mock_llm`. Do not quote them as a fully trained run or as a result about `qwen35-27b`.
+```bash
+# Full run (tested with LLM_MODEL=gemma4-31b-it on [https://openai.rc.asu.edu/v1](https://openai.rc.asu.edu/v1), VPN off)
+python scripts/evaluate_llm.py --config configs/default.yaml \
+  --ablations --explanations \
+  --confirm-api-calls --maximum-api-calls 650 --request-timeout-seconds 300
+```
 
-The results table is rewritten by `evaluate_models.py` and extended by `evaluate_llm.py` at [artifacts/metrics/results_table.md](artifacts/metrics/results_table.md). Copy that table into a report after the run you intend to cite. The smoke numbers from this workspace are recorded in the next section only after the command has been executed.
+**Reproducing the two-model comparison and free-tier quotas:**
 
-## Smoke-test results
+- `evaluate_llm.py` overwrites `artifacts/metrics/llm_comparison.json`, `llm_ablations.csv`, and `manual_audit_explanations.csv` on each run. Back up your first model's outputs before switching `.env` to a second model:
+  ```bash
+  cp -r artifacts/metrics artifacts/metrics_gemma4
+  ```
+- Update `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in `.env` (for example, `LLM_MODEL=gemini-3.1-flash-lite`) and re-run the same `evaluate_llm.py` command. SQLite cache keys include `LLM_MODEL`, so cached runs never collide across models.
+- On rate-limited free tiers (such as Gemini's 500 requests/day cap), split the run across days by lowering `--maximum-api-calls` (for example, `330` on Pass 1, then re-running the exact same command after the daily reset). Completed prompts load from `artifacts/cache/llm_cache.sqlite` at zero API cost.
 
-Command:
+**Note on the explanation audit table:**
+
+- `evaluate_llm.py --explanations` generates 50 explanations using the current **v2** prompt and exports `artifacts/metrics/manual_audit_explanations.csv` with empty rubric columns (`factual_support_1_5`, `history_relevance_1_5`, `user_utility_1_5`, `auditor_notes`) for manual rubric scoring. The v1 baseline row in the table above was recorded prior to commit `fd2b8a1` before adding the explicit history-title requirement.
+
+### 4. Offline Smoke Pipeline, Notebook, Demo, and Tests
+
+To verify the full pipeline offline with zero API keys (16 factors, 5 epochs, 25 users, deterministic genre-overlap mock client):
 
 ```bash
 python scripts/run_pipeline.py --config configs/default.yaml --data-dir ml-100k --smoke --device cpu
 ```
 
-This is a smoke test. Factorization used 16 factors and stopped at epoch 3 of a 5-epoch cap because validation NDCG@10 stopped improving. The LLM block is the mock genre-overlap client on 25 users, with a cold cache. It is not a measurement of `qwen35-27b`.
+Launch the Streamlit demo, exploratory notebook, or test suite:
 
-Split: 938 eligible users, 5 removed, 94,527 training interactions, 938 validation, 938 test, 3,597 discarded. Sparsity of the cleaned data is 0.937.
+```bash
+streamlit run app/streamlit_app.py
+jupyter notebook notebooks/exploratory_analysis.ipynb
+pytest
+```
 
-Test ranking metrics on all 938 users, alpha 0.75 selected on validation:
+Common flags:
 
-| Model | HR@10 | NDCG@10 | MRR | Coverage@10 | Diversity@10 | Novelty@10 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Popularity, Bayesian | 0.0405 | 0.0166 | 0.0165 | 0.0321 | 0.7399 | 2.3563 |
-| Popularity, positive count | 0.0682 | 0.0343 | 0.0334 | 0.0565 | 0.6853 | 1.2981 |
-| Matrix factorization | 0.0576 | 0.0281 | 0.0271 | 0.0571 | 0.6501 | 1.5703 |
-| Content | 0.0213 | 0.0105 | 0.0130 | 0.2669 | 0.1334 | 4.5958 |
-| Hybrid | 0.0544 | 0.0283 | 0.0290 | 0.0624 | 0.5446 | 1.6436 |
+- `--smoke` on `train_models.py`, `evaluate_llm.py`, and `run_pipeline.py` runs a reduced training schedule and 25-user sample.
+- `--device cpu|cuda|mps|auto`, `--epochs`, and `--latent-dimensions` override `configs/default.yaml`.
+- `--mock-llm`, `--dry-run`, `--refresh-cache`, `--maximum-api-calls`, `--confirm-api-calls`, `--request-timeout-seconds`, `--sample-users`, `--ablations`, `--no-ablations`, and `--explanations` control Stage 2 execution.
 
-On this short run, positive-count popularity has the highest Hit Rate@10 and NDCG@10. The hybrid does not beat it. Content has the highest coverage and novelty and the lowest relevance. That is an offline result for an undertrained model, not a claim that popularity is the best possible system.
+## Streamlit Demo
 
-Secondary rating error for the factorization model: test RMSE 0.869, test MAE 0.738.
+Run `streamlit run app/streamlit_app.py` after training Stage 1 models. You can test two modes:
 
-Mock rerank versus hybrid on the same 25 users: mean paired NDCG@10 difference 0.051, 95% bootstrap interval [0.000, 0.127]. The interval includes zero, and 25 users is too small for a reliable conclusion. The mock changed the top recommendation for 96% of the sample and moved candidate ranks by 4.74 positions on average. Invalid-response rate 0, fallback rate 0, cache-hit rate 0, about 893 prompt tokens, 105 uncached mock calls. Do not read the 0.051 difference as evidence that an LLM helps.
+- **New demo user (cold start)**: Search for movies, assign ratings, and compare popularity, content, hybrid (`alpha * popularity + (1 - alpha) * content`), and hybrid + LLM reranking. The UI explicitly labels this as cold-start mode and leaves collaborative MF blank because no user embedding exists.
+- **Existing user**: Inspect a MovieLens user's training history and recommendations from their trained embedding without displaying held-out validation or test ratings.
 
-A secondary content-only sparsity check on 920 users changed mean NDCG@10 from 0.0108 with the full training profile to 0.0115 with only the earliest positive ratings. The difference is tiny. Short genre histories are not a substitute for a missing preference history.
-
-The same tables are written to [artifacts/metrics/results_table.md](artifacts/metrics/results_table.md). Re-running the full 50-epoch schedule can change every number above.
+Mock LLM mode is enabled by default so you never burn API calls accidentally. Live reranking requires valid `.env` credentials plus checking the live-call confirmation box.
 
 ## Testing
 
@@ -319,59 +343,36 @@ The same tables are written to [artifacts/metrics/results_table.md](artifacts/me
 pytest
 ```
 
-Tests cover parsing, the chronological split, leakage, seen-item filtering, popularity order, factorization shapes and checkpoints, content profiles, normalization, the hybrid formula, top-K metrics, JSON parsing, duplicate and invalid ids, missing-candidate completion, total request failure, cache contents, retry spacing, and one synthetic end-to-end smoke path. No test needs a network or a real key.
+The test suite verifies MovieLens parsing, chronological splits, leakage guards, seen-item filtering, popularity tie-breaking, MF checkpoint shapes, content normalization, hybrid scoring, ranking metrics, JSON permutation repair, genre-hallucination rejection, v2 prompt grounding rules, cache behavior, retry spacing, and an end-to-end synthetic smoke run. No test makes network requests or requires API keys.
 
-`tests/test_data.py` also parses a local `ml-100k` directory when that folder exists.
+## Repository Artifacts
 
-## Limitations
+| Path                               | Contents                                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `configs/default.yaml`             | Central hyperparameters, split rules, and LLM defaults                                                        |
+| `data/processed/`                  | Cleaned ratings, movies, genre matrix, splits, `tmdb_metadata.json`                                           |
+| `artifacts/models/`                | Popularity stats, genre matrix, `mf.pt`, selected `alpha`, run metadata                                       |
+| `artifacts/cache/llm_cache.sqlite` | SQLite response cache keyed by model and prompt hash (no API keys)                                            |
+| `artifacts/metrics/`               | Model tables, `llm_comparison.json`, `llm_ablations.csv`, `manual_audit_explanations.csv`, `results_table.md` |
+| `artifacts/plots/`                 | Data distributions, MF curves, alpha sweep, bucket analysis, rank displacement charts                         |
 
-- MovieLens 100K genres are coarse flags. They do not encode plot, tone, cast, or direction. The explanation prompt is forbidden from inventing those attributes because the data does not contain them.
-- Popularity bias is structural. The Bayesian prior and the hybrid's collaborative term both favor movies that many people rated. Head items will look easier to hit because the held-out relevant movie is itself something a user chose to rate, and those movies tend to be popular.
-- A feedback loop is a deployment risk this offline split cannot see. If a system mostly recommends popular movies, future ratings concentrate on those movies, and the next model looks even more popular. Offline MovieLens ratings were not produced by this recommender.
-- Relevance here means "the user rated this held-out movie 4 or 5 in 1997–1998." That is not satisfaction, watch completion, or a choice among the recommendations the system actually showed.
-- API outputs are not a frozen dataset. A provider can change sampling, safety filters, or the model behind a name. Temperature 0 reduces but does not remove nondeterminism. The cache makes one recorded run repeatable. A later live run can differ. The mock client is deterministic and is labeled as a mock.
-- A few hundred public users, or a 25-user smoke sample, cannot establish what a person wants. The ratings are historical, anonymous, and limited to movies those users happened to rate.
-- A statistically significant online result from Netflix does not transfer here. Netflix had a different catalog, interface, feedback loop, objective, and user base. This project measures proxy ranking metrics on a 1998 research dataset. An interval that excludes zero on MovieLens would still not be evidence about a production service.
+## Limitations and Ethics
 
-## Ethical considerations
-
-The data are public research ratings, not a private profile. Do not try to re-identify users. Do not present a recommendation or an LLM sentence as a fact about a person's taste. Explanations must stay inside the supplied history. Do not ship an API key. Do not log prompts in a place that retains secrets. The rate limit and the confirmation flag exist so a class project does not accidentally send a large request volume.
-
-## Cost control
-
-- Six requests per minute, concurrency one, and at least ten seconds between uncached live calls.
-- Cache before calling. Resume after an interruption.
-- Dry run prints the uncached count first.
-- Live calls require `--confirm-api-calls`.
-- `--maximum-api-calls` stops the rest of the sample on the hybrid order.
-- The LLM sees 20 candidates, not 1,682 movies.
-- History is capped at 10 positive, 5 negative, and 5 recent titles.
-- Live ablations and bulk explanations are off unless requested. The mock path explains at most five users.
-- Temperature is 0.
+- **Stage 1 recall ceiling**: Because the LLM only sees Stage 1's top 20 candidates, it gets zero credit whenever Biased MF fails to retrieve the held-out movie into that pool. Swapping pointwise MSE MF for a pairwise ranking retriever (such as BPR or LightGCN) is the clearest next step.
+- **Catalog label noise**: MovieLens 100K omits valid genre tags on several well-known titles (for example, neither _The Silence of the Lambs_ nor _The Fugitive_ carries the `Crime` tag). Strict catalog validators catch these mismatches cleanly, though they can occasionally penalize factually accurate plot descriptions.
+- **Offline proxy vs. live satisfaction**: Rating a movie 4 or 5 in 1997-1998 is an offline historical proxy, not proof of watch completion or online user satisfaction. Offline splits also cannot measure deployment feedback loops or exposure bias.
+- **Model nondeterminism and sample size**: Even at `temperature = 0`, hosted LLM APIs can drift across backend updates. SQLite caching freezes a recorded run for reproducibility, and `N = 100` users leaves wide bootstrap intervals on leave-one-out NDCG@10.
+- **Data privacy and safety**: MovieLens 100K is an anonymized public research dataset. Do not attempt user re-identification, do not present generated explanations as certainty about a person's taste, and never commit `.env` or log raw bearer tokens.
 
 ## Troubleshooting
 
-| Symptom | What to do |
-| --- | --- |
-| `u.data` not found | Pass `--data-dir` or run `download_data.py` |
-| Processed files missing | Run `prepare_data.py` |
-| Checkpoint missing | Run `train_models.py` |
-| LLM disabled | Set `LLM_API_KEY` and `LLM_BASE_URL`, or pass `--mock-llm` |
-| Live call refused | Add `--confirm-api-calls` after reading the dry-run estimate |
-| HTTP 401 or 403 | The key or base URL is wrong. The client will not retry these |
-| HTTP 429 | Retried with backoff. Lower the call budget if it persists |
-| Streamlit says artifacts are missing | Run the smoke pipeline first |
-| Results look identical for hybrid and LLM | The fallback path kept the hybrid order, or the mock agreed with it. Read `fallback_reason` in `llm_per_user.csv` |
-
-## Four-week schedule
-
-| Week | Focus |
-| --- | --- |
-| 1 | Parse MovieLens, validate ids and genres, implement the chronological split, write leakage tests, and plot the rating and popularity distributions |
-| 2 | Popularity, biased matrix factorization, content profiles, hybrid alpha selection on validation, and offline ranking metrics |
-| 3 | Provider-neutral client, cache, rate limit, prompts, repair and fallback, mock evaluation, and the small ablations |
-| 4 | Head/mid/tail and sparse-user checks, Streamlit cold-start demo, README, and a full non-smoke training run if the schedule allows |
-
-## Configuration
-
-The central file is [configs/default.yaml](configs/default.yaml). Values there override the dataclass defaults. Command-line flags override the file for epochs, factors, device, smoke mode, and the LLM sample.
+| Symptom                              | Fix                                                                                                                   |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `u.data` not found                   | Run `scripts/download_data.py` or pass `--data-dir ml-100k`                                                           |
+| Missing TMDB metadata                | Add `TMDB_API_KEY` to `.env` and run `scripts/fetch_tmdb_metadata.py`                                                 |
+| Live LLM calls disabled              | Set `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` in `.env`, or pass `--mock-llm`                                    |
+| Live run exits with status 2         | Review the `--dry-run` estimate and add `--confirm-api-calls`                                                         |
+| HTTP 401 or 403                      | Check your API key or base URL; auth errors are never retried                                                         |
+| Requests time out on shared clusters | Pass `--request-timeout-seconds 300`; on ASU RC (`openai.rc.asu.edu/v1`), disconnect the VPN                          |
+| High JSON truncation / fallback rate | Switch `LLM_MODEL` in `.env` to a non-reasoning instruct model (forced-thinking models can exhaust `max_tokens: 512`) |
+| Streamlit reports missing artifacts  | Run `train_models.py` and `evaluate_models.py` (or `run_pipeline.py --smoke`) first                                   |

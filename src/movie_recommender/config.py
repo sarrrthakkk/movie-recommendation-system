@@ -91,6 +91,8 @@ class HybridConfig(BaseModel):
 class EvaluationConfig(BaseModel):
     k_values: list[int] = Field(default_factory=lambda: [5, 10])
     llm_sample_users: int = 100
+    stratify_sample_users: bool = True
+    explanation_audit_samples: int = 50
     bootstrap_resamples: int = 1000
 
     @field_validator("k_values")
@@ -100,7 +102,7 @@ class EvaluationConfig(BaseModel):
             raise ValueError("k_values must be positive")
         return value
 
-    @field_validator("llm_sample_users", "bootstrap_resamples")
+    @field_validator("llm_sample_users", "bootstrap_resamples", "explanation_audit_samples")
     @classmethod
     def positive(cls, value: int) -> int:
         if value < 1:
@@ -111,6 +113,7 @@ class EvaluationConfig(BaseModel):
 class LLMConfig(BaseModel):
     model: str = "qwen35-27b"
     temperature: float = 0.0
+    max_tokens: int | None = 512
     requests_per_minute: int = 6
     concurrency: int = 1
     request_timeout_seconds: float = 90
@@ -119,6 +122,23 @@ class LLMConfig(BaseModel):
     maximum_candidates: int = 20
     maximum_positive_history: int = 10
     maximum_negative_history: int = 5
+    tmdb_cache_path: str = "data/processed/tmdb_metadata.json"
+    use_tmdb_metadata: bool = True
+    max_plot_chars: int = 220
+
+    @field_validator("max_plot_chars")
+    @classmethod
+    def max_plot_chars_positive(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("max_plot_chars must be at least 1")
+        return value
+
+    @field_validator("max_tokens")
+    @classmethod
+    def max_tokens_positive(cls, value: int | None) -> int | None:
+        if value is not None and value < 1:
+            raise ValueError("max_tokens must be at least 1")
+        return value
 
     @field_validator("temperature")
     @classmethod
@@ -174,5 +194,6 @@ class AppConfig(BaseModel):
         )
         cfg.matrix_factorization.patience = min(cfg.matrix_factorization.patience, 2)
         cfg.evaluation.llm_sample_users = min(cfg.evaluation.llm_sample_users, 25)
+        cfg.evaluation.explanation_audit_samples = min(cfg.evaluation.explanation_audit_samples, 5)
         cfg.evaluation.bootstrap_resamples = min(cfg.evaluation.bootstrap_resamples, 200)
         return cfg
