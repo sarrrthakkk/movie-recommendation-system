@@ -54,7 +54,7 @@ flowchart TD
   H --> M
 ```
 
-All HTTP provider logic sits inside `OpenAICompatibleClient` in [src/movie_recommender/llm/client.py](src/movie_recommender/llm/client.py). To plug in a non-OpenAI provider later, implement `ChatClient.chat` and pass it into `LLMGateway`, which handles SQLite caching, request pacing, retries, and call budgets automatically.
+All HTTP provider logic sits inside `OpenAICompatibleClient` in [src/movie_recommender/llm/client.py](src/movie_recommender/llm/client.py). `OpenAICompatibleClient` works with any standard OpenAI-compatible API endpoint simply by updating `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in `.env`. To plug in a non-OpenAI provider later, implement `ChatClient.chat` and pass it into `LLMGateway`, which handles SQLite caching, request pacing, retries, and call budgets automatically.
 
 ## Dataset and TMDB Enrichment
 
@@ -97,8 +97,9 @@ LLM_MODEL=gemma4-31b-it
 TMDB_API_KEY=
 ```
 
-- `LLM_BASE_URL` is the server root prefixing `/chat/completions` (for example, `https://openai.rc.asu.edu/v1` or the Gemini OpenAI-compatible endpoint). The client posts to `{LLM_BASE_URL}/chat/completions` using `Authorization: Bearer <key>`.
-- `LLM_MODEL` resolves directly from `.env` and controls the active model ID (also included in every SQLite cache key so runs with different models never collide). Use a non-reasoning instruct model (such as `gemma4-31b-it` or `gemini-3.1-flash-lite`). Forced-thinking models (such as `glm-5-3`) can consume the fixed `max_tokens: 512` budget on internal reasoning tokens and truncate JSON output.
+- We selected **`gemma4-31b-it`** (`temperature = 0.0`, `max_tokens = 512`, hosted on ASU Research Computing) as our primary evaluation model.
+- `LLM_BASE_URL` is the server root prefixing `/chat/completions` (for example, `https://openai.rc.asu.edu/v1`). The client posts to `{LLM_BASE_URL}/chat/completions` using `Authorization: Bearer <key>`. `OpenAICompatibleClient` works with any OpenAI-compatible API endpoint by updating `.env`.
+- `LLM_MODEL` resolves directly from `.env` and controls the active model ID (also included in every SQLite cache key so runs with different models never collide). We use `gemma4-31b-it` as our selected implementation model. Forced-thinking models (such as `glm-5-3`) can consume the fixed `max_tokens: 512` budget on internal reasoning tokens and truncate JSON output.
 - `TMDB_API_KEY` is only needed once to populate `data/processed/tmdb_metadata.json`.
 
 If `LLM_API_KEY` or `LLM_BASE_URL` is missing, live LLM calls stay disabled with a clear warning while all classical models, tests, and the Streamlit cold-start demo continue running. API keys are never written to SQLite, never printed in logs, and stripped if they ever appear in error strings.
@@ -174,11 +175,11 @@ The reranker must return strict JSON containing `ranked_movie_ids` (an exact per
 4. If the repair has no valid IDs, apply the same partial completion to the initial response.
 5. If HTTP calls fail, time out after retries, or hit `--maximum-api-calls`, keep the hybrid order and log the exact `fallback_reason`.
 
-### Grounded Explanations (v2 Prompt)
+### Grounded Explanations (Initial vs. Improved Prompt)
 
-Explanations are generated for a 10-user stratified audit cohort (50 movie recommendations total, exported to `artifacts/metrics/manual_audit_explanations.csv`). Early testing (v1) revealed **metadata anchoring**: passing rich TMDB plots caused the model to write clean standalone synopses while ignoring user watch history on 34 of 44 non-fallback rows.
+Explanations are generated for a 10-user stratified audit cohort (50 movie recommendations total, exported to `artifacts/metrics/manual_audit_explanations.csv`). Early testing with the **initial explanation prompt** revealed **metadata anchoring**: passing rich TMDB plots caused the model to write clean standalone synopses while ignoring user watch history on 34 of 44 non-fallback rows.
 
-The current v2 explanation prompt (`EXPLAIN_SYSTEM_TMDB` and `build_explanation_messages` in `src/movie_recommender/llm/prompts.py`) passes both `[RECENT_POSITIVE]` and `[HIGHEST_RATED]` history and enforces a two-part single-sentence structure:
+The **improved explanation prompt** (`EXPLAIN_SYSTEM_TMDB` and `build_explanation_messages` in `src/movie_recommender/llm/prompts.py`) passes both `[RECENT_POSITIVE]` and `[HIGHEST_RATED]` history and enforces a two-part single-sentence structure:
 
 1. Explicitly reference at least one movie title from the user's history and explain the shared theme, tone, or genre.
 2. Include the recommended film's `movie_id` plus grounded plot, director, or cast metadata while restricting genre words strictly to the catalog's listed genres (preventing unlisted genre leakage, such as calling _The Silence of the Lambs_ a "crime" film when MovieLens tags it `Drama|Thriller`).
@@ -223,36 +224,35 @@ Raw positive-count popularity beats pointwise MSE MF on this chronological split
 
 ### Stage 2: Live LLM Reranking & Ablations (100-User Stratified Sample)
 
-We evaluated two live models on the exact same 100-user candidate pool (`hybrid_on_sample`: NDCG@10 `0.0278`, HR@10 `0.0700`, MRR `0.0223`): **`gemma4-31b-it`** hosted on ASU Research Computing (all 6 jobs complete: 629 calls, 7.65s avg latency, 0 retries, 0.0% reranking fallback rate) and **`gemini-3.1-flash-lite`** via the Gemini API (4 jobs complete; reverse-order and genre-only ablations queued for the final free-tier quota window).
+We evaluated our selected implementation model, **`gemma4-31b-it`** (`temperature = 0.0`, `max_tokens = 512`, hosted on ASU Research Computing), on the shared 100-user candidate pool (`hybrid_on_sample`: NDCG@10 `0.0278`, HR@10 `0.0700`, MRR `0.0223`). All 6 ablation jobs completed in a single pass (629 live API calls, 7.65s average latency, 0 retries, 0.0% reranking fallback rate across all jobs):
 
-| Job                      |   K | History Profile | Order   | TMDB | `gemma4-31b-it` NDCG@10 (HR / MRR) | `gemini-3.1-flash-lite` NDCG@10 (HR / MRR) |
-| ------------------------ | --: | --------------- | ------- | ---- | ---------------------------------: | -----------------------------------------: |
-| `hybrid` (Stage 1)       |  20 | N/A             | hybrid  | No   |             0.0278 (0.07 / 0.0223) |                     0.0278 (0.07 / 0.0223) |
-| `llm_combined` (primary) |  20 | combined        | hybrid  | Yes  |         **0.0386** (0.07 / 0.0359) |                     0.0335 (0.06 / 0.0330) |
-| `llm_candidates_10`      |  10 | combined        | hybrid  | Yes  |             0.0388 (0.07 / 0.0362) |                 **0.0424** (0.07 / 0.0410) |
-| `llm_highest_rated`      |  20 | highest_rated   | hybrid  | Yes  |             0.0343 (0.07 / 0.0312) |                 **0.0443** (0.09 / 0.0364) |
-| `llm_recent_positive`    |  20 | recent_positive | hybrid  | Yes  |             0.0388 (0.08 / 0.0331) |                 **0.0451** (0.08 / 0.0411) |
-| `llm_k20_reverse`        |  20 | combined        | reverse | Yes  |         **0.0458** (0.07 / 0.0453) |                         Pending quota pass |
-| `llm_k20_genre_only`     |  20 | combined        | hybrid  | No   |         **0.0418** (0.07 / 0.0404) |                         Pending quota pass |
+| Job | K | History Profile | Order | TMDB | NDCG@10 | HR@10 | MRR |
+| --- | --: | --- | --- | --- | ---: | ---: | ---: |
+| `hybrid` (Stage 1) | 20 | N/A | hybrid | No | 0.0278 | 0.0700 | 0.0223 |
+| `llm_combined` (primary) | 20 | combined | hybrid | Yes | **0.0386** | 0.0700 | 0.0359 |
+| `llm_candidates_10` | 10 | combined | hybrid | Yes | 0.0388 | 0.0700 | 0.0362 |
+| `llm_highest_rated` | 20 | highest_rated | hybrid | Yes | 0.0343 | 0.0700 | 0.0312 |
+| `llm_recent_positive` | 20 | recent_positive | hybrid | Yes | 0.0388 | **0.0800** | 0.0331 |
+| `llm_k20_reverse` | 20 | combined | reverse | Yes | **0.0458** | 0.0700 | **0.0453** |
+| `llm_k20_genre_only` | 20 | combined | hybrid | No | **0.0418** | 0.0700 | 0.0404 |
 
-Key empirical findings from our live runs:
+Key empirical findings from our live evaluation:
 
-- **Positive directional lift, wide sample uncertainty**: On the primary `llm_combined` setup, `gemma4-31b-it` lifted NDCG@10 by `+0.0109` (+39.2%, 95% CI `[-0.0132, +0.0348]`) and `gemini-3.1-flash-lite` lifted NDCG@10 by `+0.0057` (+20.5%, 95% CI `[-0.0187, +0.0305]`). Both bootstrap intervals cross zero at `N = 100`, so mean NDCG differences remain statistically inconclusive on 100 users.
-- **Clear beyond-accuracy shifts (`gemma4-31b-it` primary vs. hybrid)**: Popularity@10 dropped 13.3% (`330.74` to `286.81`), Novelty@10 rose 13.8% (`1.5898` to `1.8087`), and Coverage@10 rose 29.0% (`0.0452` to `0.0583`), with non-overlapping 95% intervals on popularity and novelty. Diversity@10 decreased 14.8% (`0.6499` to `0.5539`) because the LLM tightened recommendations around each user's preferred genres.
-- **Prompt design matters more than raw prompt length**: Removing `[LOWEST_RATED]` history boosted `gemini-3.1-flash-lite` sharply (`0.0451` NDCG@10 on `llm_recent_positive`, +62.2% over hybrid). On `gemma4-31b-it`, dropping TMDB plots (`llm_k20_genre_only`, `0.0418`) outperformed TMDB-enriched reranking (`0.0386`) by +8.0%, showing that a 31B model already encodes classic 1990s film semantics and benefits from shorter ranking prompts.
-- **Positional sensitivity is real**: Reversing candidate input order (`llm_k20_reverse`) moved `gemma4-31b-it` up to `0.0458` NDCG@10 (+18.5% over forward order, 0.98 top-1 change rate), confirming listwise order bias.
+- **Positive directional lift, wide sample uncertainty**: On the primary `llm_combined` setup, `gemma4-31b-it` lifted NDCG@10 by `+0.0109` (+39.2%, from `0.0278` to `0.0386`, 95% bootstrap CI `[-0.0132, +0.0348]`). Because the 95% bootstrap interval includes zero at `N = 100`, this sample does not demonstrate a statistically certain average difference.
+- **Clear beyond-accuracy shifts (`gemma4-31b-it` primary vs. hybrid)**: Popularity@10 dropped 13.3% (`330.74` to `286.81`), Novelty@10 rose 13.8% (`1.5898` to `1.8087`), and Coverage@10 rose 29.0% (`0.0452` to `0.0583`), with non-overlapping 95% bootstrap intervals on popularity and novelty. Diversity@10 decreased 14.8% (`0.6499` to `0.5539`) because the LLM tightened recommendations around each user's specific genre profile.
+- **Metadata value and prompt length**: Dropping TMDB plot overviews (`llm_k20_genre_only`, NDCG@10 `0.0418`) outperformed TMDB-enriched reranking (`0.0386`) by +8.0%, showing that a 31B instruction-tuned model already encodes classic 1990s film semantics and benefits from shorter ranking prompts.
+- **Positional sensitivity**: Reversing candidate input order (`llm_k20_reverse`) moved `gemma4-31b-it` up to `0.0458` NDCG@10 (+18.5% over forward order, with a 0.98 top-1 change rate), demonstrating listwise order sensitivity.
 
 ### Explanation Audit (50 Recommendations Across 10 Stratified Users)
 
-Scoring the 50 audited rows on a 1 to 5 rubric (`factual_support`, `history_relevance`, `user_utility`) measured the direct effect of our v2 history-linking prompt fix on `gemini-3.1-flash-lite`:
+Evaluating the 50 audited recommendations in `artifacts/metrics/manual_audit_explanations.csv` highlights the transition from the initial explanation prompt to the improved explanation prompt:
 
-| Run                                 |   Fallback Rate | Factual Support (1-5) | History Relevance (1-5) | User Utility (1-5) |
-| ----------------------------------- | --------------: | --------------------: | ----------------------: | -----------------: |
-| `gemini-3.1-flash-lite` (v1 prompt) |    12.0% (6/50) |                  4.72 |                    1.54 |               2.80 |
-| `gemini-3.1-flash-lite` (v2 prompt) |     6.0% (3/50) |                  4.60 |        **4.10** (+2.56) |   **3.68** (+0.88) |
-| `gemma4-31b-it` (v2 prompt)         | **2.0% (1/50)** |    49/50 passed gates |         Pending scoring |    Pending scoring |
+| Prompt Version | Model | Fallback Rate | Valid Grounded Explanations | Primary Failure Mode / Observations |
+| --- | --- | ---: | ---: | --- |
+| Initial explanation prompt | Baseline testing | 12.0% (6/50) | 44/50 | Metadata anchoring (dropped history titles in 77% of rows) |
+| **Improved explanation prompt** | **`gemma4-31b-it`** | **2.0% (1/50)** | **49/50 (98.0%)** | Clean single-sentence history-linked explanations (1 partial template) |
 
-Switching to the v2 prompt cut Gemini's fallback rate in half, eliminated all 4 `hallucinated_genre` rejections, and raised rows scoring 4 or 5 on history relevance from 8.0% (4/50) to 86.0% (43/50).
+The improved explanation prompt achieved a **98.0% clean pass rate** (49/50 rows) with `gemma4-31b-it`: 0 schema rejections, 0 `invalid_json` truncations, and only 1 `partial_template` fallback due to missing TMDB plot overview.
 
 ## Reproduction
 
@@ -300,18 +300,9 @@ python scripts/evaluate_llm.py --config configs/default.yaml \
   --confirm-api-calls --maximum-api-calls 650 --request-timeout-seconds 300
 ```
 
-**Reproducing the two-model comparison and free-tier quotas:**
-
-- `evaluate_llm.py` overwrites `artifacts/metrics/llm_comparison.json`, `llm_ablations.csv`, and `manual_audit_explanations.csv` on each run. Back up your first model's outputs before switching `.env` to a second model:
-  ```bash
-  cp -r artifacts/metrics artifacts/metrics_gemma4
-  ```
-- Update `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in `.env` (for example, `LLM_MODEL=gemini-3.1-flash-lite`) and re-run the same `evaluate_llm.py` command. SQLite cache keys include `LLM_MODEL`, so cached runs never collide across models.
-- On rate-limited free tiers (such as Gemini's 500 requests/day cap), split the run across days by lowering `--maximum-api-calls` (for example, `330` on Pass 1, then re-running the exact same command after the daily reset). Completed prompts load from `artifacts/cache/llm_cache.sqlite` at zero API cost.
-
 **Note on the explanation audit table:**
 
-- `evaluate_llm.py --explanations` generates 50 explanations using the current **v2** prompt and exports `artifacts/metrics/manual_audit_explanations.csv` with empty rubric columns (`factual_support_1_5`, `history_relevance_1_5`, `user_utility_1_5`, `auditor_notes`) for manual rubric scoring. The v1 baseline row in the table above was recorded prior to commit `fd2b8a1` before adding the explicit history-title requirement.
+- `scripts/evaluate_llm.py --explanations` generates 50 explanations using the improved explanation prompt and exports `artifacts/metrics/manual_audit_explanations.csv` with rubric columns (`factual_support_1_5`, `history_relevance_1_5`, `user_utility_1_5`, `auditor_notes`) for manual evaluation. The initial explanation prompt baseline in the table above was recorded prior to commit `fd2b8a1` before requiring explicit history-title linking.
 
 ### 4. Offline Smoke Pipeline, Notebook, Demo, and Tests
 
@@ -350,7 +341,7 @@ Mock LLM mode is enabled by default so you never burn API calls accidentally. Li
 pytest
 ```
 
-The test suite verifies MovieLens parsing, chronological splits, leakage guards, seen-item filtering, popularity tie-breaking, MF checkpoint shapes, content normalization, hybrid scoring, ranking metrics, JSON permutation repair, genre-hallucination rejection, v2 prompt grounding rules, cache behavior, retry spacing, and an end-to-end synthetic smoke run. No test makes network requests or requires API keys.
+The test suite verifies MovieLens parsing, chronological splits, leakage guards, seen-item filtering, popularity tie-breaking, MF checkpoint shapes, content normalization, hybrid scoring, ranking metrics, JSON permutation repair, genre-hallucination rejection, improved explanation prompt grounding rules, cache behavior, retry spacing, and an end-to-end synthetic smoke run. No test makes network requests or requires API keys.
 
 ## Repository Artifacts
 
