@@ -1,0 +1,13 @@
+{
+  "n_users": 100,
+  "n_jobs": 6,
+  "uncached_calls": 599,
+  "cached_prompts": 1,
+  "uncached_upper_bound": 609,
+  "mean_prompt_tokens": 1874.855,
+  "max_prompt_tokens": 2415,
+  "prompt_version": "v1",
+  "dry_run_note": "No API call is made during a dry run.",
+  "explanation_calls_upper_bound": 10,
+  "repairs_not_included": "A repair call is made only after an invalid ranking. It is not part of the base estimate."
+}

@@ -1,0 +1,9 @@
+{
+  "alpha": 1.0,
+  "validation_ndcg@10": 0.03947938811596004,
+  "tie_break": "highest validation NDCG@10, then closest to 0.5, then smaller alpha",
+  "smoke": false,
+  "seed": 42,
+  "result_type": "full",
+  "note": "Alpha was selected on validation rankings only. Test labels were not used."
+}

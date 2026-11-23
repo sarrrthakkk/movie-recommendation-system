@@ -1,0 +1,7 @@
+name,history_mode,candidate_k,candidate_order,use_tmdb,ndcg@10,hit@10,mrr,api_calls,invalid_response_rate,fallback_rate,top1_change_rate,mean_abs_displacement,primary
+llm_combined,combined,20,hybrid,True,0.03864208129110059,0.07,0.035928586705438234,103,0.04,0.0,0.9,5.824000000000001,True
+llm_candidates_10,combined,10,hybrid,True,0.038833597768197094,0.07,0.03615693188966577,100,0.0,0.0,0.88,2.9899999999999993,False
+llm_highest_rated,highest_rated,20,hybrid,True,0.03430145906155193,0.07,0.0312490907627844,103,0.03,0.0,0.89,5.734,False
+llm_recent_positive,recent_positive,20,hybrid,True,0.03883240714799784,0.08,0.03307351633720997,106,0.06,0.0,0.91,5.82,False
+llm_k20_reverse,combined,20,reverse,True,0.0457938887245085,0.07,0.04525046438915802,103,0.03,0.0,0.98,6.189000000000001,False
+llm_k20_genre_only,combined,20,hybrid,False,0.041750197435780026,0.07,0.0403740532186292,104,0.04,0.0,0.91,5.672000000000001,False

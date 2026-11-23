@@ -1,0 +1,7 @@
+{
+  "n_users": 920,
+  "mean_ndcg@10_full_history": 0.010753504751177858,
+  "mean_ndcg@10_truncated_history": 0.011546134781927855,
+  "mean_difference_truncated_minus_full": 0.0007926300307499967,
+  "note": "Secondary sparsity check for the content model. Metadata can help when a short history still has genre signal, but it cannot recommend for a user with no preference history. Matrix factorization was not retrained on the truncated histories."
+}

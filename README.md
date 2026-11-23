@@ -10,6 +10,13 @@
 | Shashwat Dwivedi   | sdwive18@asu.edu |
 | Dhanashree Somani  | dsomani3@asu.edu |
 
+## Repository Structure
+
+Course rubric submission directory mapping:
+- **Code:** `src/`, `scripts/`, `app/`, `tests/`
+- **Data:** `data/processed/` (cached TMDB metadata and split summary; raw MovieLens 100K fetched via `scripts/download_data.py`)
+- **Evaluations:** `artifacts/metrics/` and `artifacts/plots/` (Stage 1 and Stage 2 tables, 6-job ablations, 50-row explanation audit, and charts)
+
 ## Overview and Research Question
 
 This repository builds and evaluates a two-stage movie recommendation pipeline on MovieLens 100K. Stage 1 trains classical popularity, biased matrix factorization, genre content, and hybrid models to retrieve a top-20 candidate set per user. Stage 2 uses a zero-shot LLM reranker enriched with TMDB metadata to reorder those candidates and generate one-sentence, history-grounded explanations.

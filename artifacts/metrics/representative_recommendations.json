@@ -1,0 +1,605 @@
+{
+  "alpha": 1.0,
+  "users": [
+    {
+      "label": "most_training_ratings",
+      "user_id": 655,
+      "n_training_ratings": 681,
+      "held_out_test_movie_id": 1650,
+      "held_out_bucket": "tail",
+      "recommendations": [
+        {
+          "movie_id": 173,
+          "title": "Princess Bride, The (1987)",
+          "year": 1987,
+          "genres": "Action|Adventure|Comedy|Romance",
+          "mf_score": 3.5559134483337402,
+          "content_score": 0.2732153786109791,
+          "hybrid_score": 1.0
+        },
+        {
+          "movie_id": 180,
+          "title": "Apocalypse Now (1979)",
+          "year": 1979,
+          "genres": "Drama|War",
+          "mf_score": 3.5552408695220947,
+          "content_score": 0.7207564366617889,
+          "hybrid_score": 0.9333301822135042
+        },
+        {
+          "movie_id": 168,
+          "title": "Monty Python and the Holy Grail (1974)",
+          "year": 1974,
+          "genres": "Comedy",
+          "mf_score": 3.5545597076416016,
+          "content_score": 0.16813254068367942,
+          "hybrid_score": 0.8658095620731218
+        },
+        {
+          "movie_id": 496,
+          "title": "It's a Wonderful Life (1946)",
+          "year": 1946,
+          "genres": "Drama",
+          "mf_score": 3.554215431213379,
+          "content_score": 0.893204122382047,
+          "hybrid_score": 0.831682934322785
+        },
+        {
+          "movie_id": 199,
+          "title": "Bridge on the River Kwai, The (1957)",
+          "year": 1957,
+          "genres": "Drama|War",
+          "mf_score": 3.554182291030884,
+          "content_score": 0.7207564366617889,
+          "hybrid_score": 0.8283978919008342
+        },
+        {
+          "movie_id": 194,
+          "title": "Sting, The (1973)",
+          "year": 1973,
+          "genres": "Comedy|Crime",
+          "mf_score": 3.5541772842407227,
+          "content_score": 0.23034484058263358,
+          "hybrid_score": 0.8279015905277338
+        },
+        {
+          "movie_id": 83,
+          "title": "Much Ado About Nothing (1993)",
+          "year": 1993,
+          "genres": "Comedy|Romance",
+          "mf_score": 3.5538384914398193,
+          "content_score": 0.26006675549652175,
+          "hybrid_score": 0.7943185309479356
+        },
+        {
+          "movie_id": 169,
+          "title": "Wrong Trousers, The (1993)",
+          "year": 1993,
+          "genres": "Animation|Comedy",
+          "mf_score": 3.553713798522949,
+          "content_score": 0.1188876596555528,
+          "hybrid_score": 0.7819582634178621
+        },
+        {
+          "movie_id": 408,
+          "title": "Close Shave, A (1995)",
+          "year": 1995,
+          "genres": "Animation|Comedy|Thriller",
+          "mf_score": 3.553637981414795,
+          "content_score": 0.22447753762878422,
+          "hybrid_score": 0.7744428426251979
+        },
+        {
+          "movie_id": 969,
+          "title": "Winnie the Pooh and the Blustery Day (1968)",
+          "year": 1968,
+          "genres": "Animation|Children's",
+          "mf_score": 3.5533831119537354,
+          "content_score": 0.0,
+          "hybrid_score": 0.7491787393945123
+        }
+      ],
+      "analysis_note": "The held-out id is an evaluation label and must not be sent to a model or prompt."
+    },
+    {
+      "label": "median_training_ratings",
+      "user_id": 768,
+      "n_training_ratings": 61,
+      "held_out_test_movie_id": 255,
+      "held_out_bucket": "head",
+      "recommendations": [
+        {
+          "movie_id": 98,
+          "title": "Silence of the Lambs, The (1991)",
+          "year": 1991,
+          "genres": "Drama|Thriller",
+          "mf_score": 3.5723977088928223,
+          "content_score": 0.627737249216624,
+          "hybrid_score": 1.0
+        },
+        {
+          "movie_id": 174,
+          "title": "Raiders of the Lost Ark (1981)",
+          "year": 1981,
+          "genres": "Action|Adventure",
+          "mf_score": 3.5720458030700684,
+          "content_score": 0.4882400827240409,
+          "hybrid_score": 0.9757687193209988
+        },
+        {
+          "movie_id": 318,
+          "title": "Schindler's List (1993)",
+          "year": 1993,
+          "genres": "Drama|War",
+          "mf_score": 3.570934295654297,
+          "content_score": 0.4882400827240409,
+          "hybrid_score": 0.8992333327861047
+        },
+        {
+          "movie_id": 64,
+          "title": "Shawshank Redemption, The (1994)",
+          "year": 1994,
+          "genres": "Drama",
+          "mf_score": 3.570709466934204,
+          "content_score": 0.6247161517603577,
+          "hybrid_score": 0.8837522367967429
+        },
+        {
+          "movie_id": 302,
+          "title": "L.A. Confidential (1997)",
+          "year": 1997,
+          "genres": "Crime|Film-Noir|Mystery|Thriller",
+          "mf_score": 3.5697379112243652,
+          "content_score": 0.2301585822275002,
+          "hybrid_score": 0.8168535452202321
+        },
+        {
+          "movie_id": 483,
+          "title": "Casablanca (1942)",
+          "year": 1942,
+          "genres": "Drama|Romance|War",
+          "mf_score": 3.5690276622772217,
+          "content_score": 0.5884779573665494,
+          "hybrid_score": 0.7679477287278578
+        },
+        {
+          "movie_id": 12,
+          "title": "Usual Suspects, The (1995)",
+          "year": 1995,
+          "genres": "Crime|Thriller",
+          "mf_score": 3.5687718391418457,
+          "content_score": 0.3022438607339301,
+          "hybrid_score": 0.750332441350779
+        },
+        {
+          "movie_id": 172,
+          "title": "Empire Strikes Back, The (1980)",
+          "year": 1980,
+          "genres": "Action|Adventure|Drama|Romance|Sci-Fi|War",
+          "mf_score": 3.5685813426971436,
+          "content_score": 0.7516947818397073,
+          "hybrid_score": 0.7372153727447343
+        },
+        {
+          "movie_id": 181,
+          "title": "Return of the Jedi (1983)",
+          "year": 1983,
+          "genres": "Action|Adventure|Romance|Sci-Fi|War",
+          "mf_score": 3.5684874057769775,
+          "content_score": 0.5440588203494177,
+          "hybrid_score": 0.7307471311542693
+        },
+        {
+          "movie_id": 168,
+          "title": "Monty Python and the Holy Grail (1974)",
+          "year": 1974,
+          "genres": "Comedy",
+          "mf_score": 3.56825590133667,
+          "content_score": 0.3287979746107146,
+          "hybrid_score": 0.7148063631737067
+        }
+      ],
+      "analysis_note": "The held-out id is an evaluation label and must not be sent to a model or prompt."
+    },
+    {
+      "label": "fewest_training_ratings",
+      "user_id": 832,
+      "n_training_ratings": 6,
+      "held_out_test_movie_id": 471,
+      "held_out_bucket": "head",
+      "recommendations": [
+        {
+          "movie_id": 50,
+          "title": "Star Wars (1977)",
+          "year": 1977,
+          "genres": "Action|Adventure|Romance|Sci-Fi|War",
+          "mf_score": 3.5746850967407227,
+          "content_score": 0.5477225575051661,
+          "hybrid_score": 1.0
+        },
+        {
+          "movie_id": 174,
+          "title": "Raiders of the Lost Ark (1981)",
+          "year": 1981,
+          "genres": "Action|Adventure",
+          "mf_score": 3.572798490524292,
+          "content_score": 0.43301270189221935,
+          "hybrid_score": 0.8810665384095111
+        },
+        {
+          "movie_id": 100,
+          "title": "Fargo (1996)",
+          "year": 1996,
+          "genres": "Crime|Drama|Thriller",
+          "mf_score": 3.572464942932129,
+          "content_score": 0.3535533905932738,
+          "hybrid_score": 0.8600393789548044
+        },
+        {
+          "movie_id": 127,
+          "title": "Godfather, The (1972)",
+          "year": 1972,
+          "genres": "Action|Crime|Drama",
+          "mf_score": 3.5720551013946533,
+          "content_score": 0.7071067811865476,
+          "hybrid_score": 0.8342025761652112
+        },
+        {
+          "movie_id": 318,
+          "title": "Schindler's List (1993)",
+          "year": 1993,
+          "genres": "Drama|War",
+          "mf_score": 3.5712687969207764,
+          "content_score": 0.5773502691896258,
+          "hybrid_score": 0.7846331895450378
+        },
+        {
+          "movie_id": 64,
+          "title": "Shawshank Redemption, The (1994)",
+          "year": 1994,
+          "genres": "Drama",
+          "mf_score": 3.5712084770202637,
+          "content_score": 0.6123724356957946,
+          "hybrid_score": 0.7808305652833932
+        },
+        {
+          "movie_id": 98,
+          "title": "Silence of the Lambs, The (1991)",
+          "year": 1991,
+          "genres": "Drama|Thriller",
+          "mf_score": 3.571018934249878,
+          "content_score": 0.43301270189221935,
+          "hybrid_score": 0.7688816076232847
+        },
+        {
+          "movie_id": 181,
+          "title": "Return of the Jedi (1983)",
+          "year": 1983,
+          "genres": "Action|Adventure|Romance|Sci-Fi|War",
+          "mf_score": 3.57073712348938,
+          "content_score": 0.5477225575051661,
+          "hybrid_score": 0.7511159875550478
+        },
+        {
+          "movie_id": 483,
+          "title": "Casablanca (1942)",
+          "year": 1942,
+          "genres": "Drama|Romance|War",
+          "mf_score": 3.5703282356262207,
+          "content_score": 0.7071067811865476,
+          "hybrid_score": 0.7253393053071409
+        },
+        {
+          "movie_id": 172,
+          "title": "Empire Strikes Back, The (1980)",
+          "year": 1980,
+          "genres": "Action|Adventure|Drama|Romance|Sci-Fi|War",
+          "mf_score": 3.5702497959136963,
+          "content_score": 0.7500000000000001,
+          "hybrid_score": 0.7203943907534607
+        }
+      ],
+      "analysis_note": "The held-out id is an evaluation label and must not be sent to a model or prompt."
+    },
+    {
+      "label": "test_item_mid",
+      "user_id": 1,
+      "n_training_ratings": 267,
+      "held_out_test_movie_id": 256,
+      "held_out_bucket": "mid",
+      "recommendations": [
+        {
+          "movie_id": 313,
+          "title": "Titanic (1997)",
+          "year": 1997,
+          "genres": "Action|Drama|Romance",
+          "mf_score": 3.571561574935913,
+          "content_score": 0.7289195700299187,
+          "hybrid_score": 1.0
+        },
+        {
+          "movie_id": 318,
+          "title": "Schindler's List (1993)",
+          "year": 1993,
+          "genres": "Drama|War",
+          "mf_score": 3.5714685916900635,
+          "content_score": 0.5666252520644,
+          "hybrid_score": 0.9930112536735718
+        },
+        {
+          "movie_id": 483,
+          "title": "Casablanca (1942)",
+          "year": 1942,
+          "genres": "Drama|Romance|War",
+          "mf_score": 3.571014881134033,
+          "content_score": 0.6190823745459584,
+          "hybrid_score": 0.9589097555730772
+        },
+        {
+          "movie_id": 302,
+          "title": "L.A. Confidential (1997)",
+          "year": 1997,
+          "genres": "Crime|Film-Noir|Mystery|Thriller",
+          "mf_score": 3.5691754817962646,
+          "content_score": 0.1988910396454166,
+          "hybrid_score": 0.8206580173464267
+        },
+        {
+          "movie_id": 496,
+          "title": "It's a Wonderful Life (1946)",
+          "year": 1946,
+          "genres": "Drama",
+          "mf_score": 3.568770170211792,
+          "content_score": 0.6802650051640335,
+          "hybrid_score": 0.7901942513081499
+        },
+        {
+          "movie_id": 427,
+          "title": "To Kill a Mockingbird (1962)",
+          "year": 1962,
+          "genres": "Drama",
+          "mf_score": 3.5687015056610107,
+          "content_score": 0.6802650051640335,
+          "hybrid_score": 0.7850333309440184
+        },
+        {
+          "movie_id": 357,
+          "title": "One Flew Over the Cuckoo's Nest (1975)",
+          "year": 1975,
+          "genres": "Drama",
+          "mf_score": 3.5687005519866943,
+          "content_score": 0.6802650051640335,
+          "hybrid_score": 0.7849616514945166
+        },
+        {
+          "movie_id": 480,
+          "title": "North by Northwest (1959)",
+          "year": 1959,
+          "genres": "Comedy|Thriller",
+          "mf_score": 3.5684430599212646,
+          "content_score": 0.4647142355060546,
+          "hybrid_score": 0.765608200129023
+        },
+        {
+          "movie_id": 603,
+          "title": "Rear Window (1954)",
+          "year": 1954,
+          "genres": "Mystery|Thriller",
+          "mf_score": 3.568368911743164,
+          "content_score": 0.1915927111296892,
+          "hybrid_score": 0.7600351229302559
+        },
+        {
+          "movie_id": 511,
+          "title": "Lawrence of Arabia (1962)",
+          "year": 1962,
+          "genres": "Adventure|War",
+          "mf_score": 3.567967414855957,
+          "content_score": 0.18343982980502158,
+          "hybrid_score": 0.7298580746899864
+        }
+      ],
+      "analysis_note": "The held-out id is an evaluation label and must not be sent to a model or prompt."
+    },
+    {
+      "label": "test_item_head",
+      "user_id": 2,
+      "n_training_ratings": 55,
+      "held_out_test_movie_id": 316,
+      "held_out_bucket": "head",
+      "recommendations": [
+        {
+          "movie_id": 174,
+          "title": "Raiders of the Lost Ark (1981)",
+          "year": 1981,
+          "genres": "Action|Adventure",
+          "mf_score": 3.5727720260620117,
+          "content_score": 0.22314514039738784,
+          "hybrid_score": 1.0
+        },
+        {
+          "movie_id": 172,
+          "title": "Empire Strikes Back, The (1980)",
+          "year": 1980,
+          "genres": "Action|Adventure|Drama|Romance|Sci-Fi|War",
+          "mf_score": 3.5720221996307373,
+          "content_score": 0.6639849815957574,
+          "hybrid_score": 0.9448216572802077
+        },
+        {
+          "movie_id": 98,
+          "title": "Silence of the Lambs, The (1991)",
+          "year": 1991,
+          "genres": "Drama|Thriller",
+          "mf_score": 3.5717740058898926,
+          "content_score": 0.6694354211921635,
+          "hybrid_score": 0.9265575381160412
+        },
+        {
+          "movie_id": 64,
+          "title": "Shawshank Redemption, The (1994)",
+          "year": 1994,
+          "genres": "Drama",
+          "mf_score": 3.5713860988616943,
+          "content_score": 0.7282497321406946,
+          "hybrid_score": 0.8980121760794427
+        },
+        {
+          "movie_id": 318,
+          "title": "Schindler's List (1993)",
+          "year": 1993,
+          "genres": "Drama|War",
+          "mf_score": 3.5712268352508545,
+          "content_score": 0.566445356393369,
+          "hybrid_score": 0.8862922609961927
+        },
+        {
+          "movie_id": 12,
+          "title": "Usual Suspects, The (1995)",
+          "year": 1995,
+          "genres": "Crime|Thriller",
+          "mf_score": 3.5707170963287354,
+          "content_score": 0.3089701943963831,
+          "hybrid_score": 0.8487815148165693
+        },
+        {
+          "movie_id": 181,
+          "title": "Return of the Jedi (1983)",
+          "year": 1983,
+          "genres": "Action|Adventure|Romance|Sci-Fi|War",
+          "mf_score": 3.5704152584075928,
+          "content_score": 0.40167592339677627,
+          "hybrid_score": 0.8265698194641823
+        },
+        {
+          "movie_id": 483,
+          "title": "Casablanca (1942)",
+          "year": 1942,
+          "genres": "Drama|Romance|War",
+          "mf_score": 3.5702526569366455,
+          "content_score": 0.714773804110795,
+          "hybrid_score": 0.8146042774181097
+        },
+        {
+          "movie_id": 56,
+          "title": "Pulp Fiction (1994)",
+          "year": 1994,
+          "genres": "Crime|Drama",
+          "mf_score": 3.5701205730438232,
+          "content_score": 0.6694354211921635,
+          "hybrid_score": 0.804884467603558
+        },
+        {
+          "movie_id": 357,
+          "title": "One Flew Over the Cuckoo's Nest (1975)",
+          "year": 1975,
+          "genres": "Drama",
+          "mf_score": 3.5699384212493896,
+          "content_score": 0.7282497321406946,
+          "hybrid_score": 0.7914802533466674
+        }
+      ],
+      "analysis_note": "The held-out id is an evaluation label and must not be sent to a model or prompt."
+    },
+    {
+      "label": "test_item_tail",
+      "user_id": 7,
+      "n_training_ratings": 400,
+      "held_out_test_movie_id": 667,
+      "held_out_bucket": "tail",
+      "recommendations": [
+        {
+          "movie_id": 313,
+          "title": "Titanic (1997)",
+          "year": 1997,
+          "genres": "Action|Drama|Romance",
+          "mf_score": 3.5757641792297363,
+          "content_score": 0.6952076571910109,
+          "hybrid_score": 1.0
+        },
+        {
+          "movie_id": 302,
+          "title": "L.A. Confidential (1997)",
+          "year": 1997,
+          "genres": "Crime|Film-Noir|Mystery|Thriller",
+          "mf_score": 3.573145866394043,
+          "content_score": 0.2543689404029488,
+          "hybrid_score": 0.7776788064052473
+        },
+        {
+          "movie_id": 1,
+          "title": "Toy Story (1995)",
+          "year": 1995,
+          "genres": "Animation|Children's|Comedy",
+          "mf_score": 3.573057174682617,
+          "content_score": 0.29583304561319607,
+          "hybrid_score": 0.7701479846954269
+        },
+        {
+          "movie_id": 272,
+          "title": "Good Will Hunting (1997)",
+          "year": 1997,
+          "genres": "Drama",
+          "mf_score": 3.572270154953003,
+          "content_score": 0.6624572404738666,
+          "hybrid_score": 0.7033220640929612
+        },
+        {
+          "movie_id": 83,
+          "title": "Much Ado About Nothing (1993)",
+          "year": 1993,
+          "genres": "Comedy|Romance",
+          "mf_score": 3.5713930130004883,
+          "content_score": 0.3493800052099546,
+          "hybrid_score": 0.6288438569143875
+        },
+        {
+          "movie_id": 14,
+          "title": "Postino, Il (1994)",
+          "year": 1994,
+          "genres": "Drama|Romance",
+          "mf_score": 3.571249485015869,
+          "content_score": 0.6055920090305881,
+          "hybrid_score": 0.6166568819968824
+        },
+        {
+          "movie_id": 408,
+          "title": "Close Shave, A (1995)",
+          "year": 1995,
+          "genres": "Animation|Comedy|Thriller",
+          "mf_score": 3.5711617469787598,
+          "content_score": 0.3761305865653493,
+          "hybrid_score": 0.6092070368645869
+        },
+        {
+          "movie_id": 242,
+          "title": "Kolya (1996)",
+          "year": 1996,
+          "genres": "Comedy",
+          "mf_score": 3.5711605548858643,
+          "content_score": 0.30011874982793957,
+          "hybrid_score": 0.6091058161426808
+        },
+        {
+          "movie_id": 735,
+          "title": "Philadelphia (1993)",
+          "year": 1993,
+          "genres": "Drama",
+          "mf_score": 3.5711560249328613,
+          "content_score": 0.6624572404738666,
+          "hybrid_score": 0.6087211773994372
+        },
+        {
+          "movie_id": 15,
+          "title": "Mr. Holland's Opus (1995)",
+          "year": 1995,
+          "genres": "Drama",
+          "mf_score": 3.571092367172241,
+          "content_score": 0.6624572404738666,
+          "hybrid_score": 0.6033159908496467
+        }
+      ],
+      "analysis_note": "The held-out id is an evaluation label and must not be sent to a model or prompt."
+    }
+  ]
+}
