@@ -14,7 +14,7 @@
 
 Course rubric submission directory mapping:
 - **Code:** `src/`, `scripts/`, `app/`, `tests/`
-- **Data:** `data/processed/` (cached TMDB metadata and split summary; raw MovieLens 100K fetched via `scripts/download_data.py`)
+- **Data:** [data/README.md](data/README.md) details retrieval and preprocessing; [data/processed/split_summary.json](data/processed/split_summary.json) and [data/processed/genre_names.json](data/processed/genre_names.json) store split metadata. Raw MovieLens 100K and TMDB metadata are downloaded locally using the provided scripts.
 - **Evaluations:** `artifacts/metrics/` and `artifacts/plots/` (Stage 1 and Stage 2 tables, 6-job ablations, 50-row explanation audit, and charts)
 
 ## Overview and Research Question
@@ -65,7 +65,14 @@ The core dataset is **MovieLens 100K**: 100,000 integer ratings (1 to 5) from 94
 
 MovieLens 100K only provides titles and 19 coarse binary genre flags (`unknown` through `Western`). To test whether richer semantic context helps reranking and explanations, `scripts/fetch_tmdb_metadata.py` enriches the catalog via the TMDB API and caches results locally in `data/processed/tmdb_metadata.json` (1,682 movies indexed, with 1,670 movies or 99.3% carrying plot summaries alongside directors and top cast).
 
-Raw MovieLens files (`ml-100k/` and `data/raw/`) are gitignored and not redistributed here. Cite Harper and Konstan (2015), _The MovieLens Datasets: History and Context_, ACM TiiS.
+### Data Retrieval Steps
+1. **MovieLens 100K:** Run `python scripts/download_data.py` to automatically fetch and extract the official archive into `data/raw/ml-100k` (or download `ml-100k.zip` manually from [GroupLens](https://grouplens.org/datasets/movielens/100k/)). Then run `python scripts/prepare_data.py --data-dir data/raw/ml-100k` to generate the chronological splits.
+2. **TMDB Metadata:** Create a free account at [The Movie Database (TMDB)](https://www.themoviedb.org), confirm your verification email, navigate to **Settings** -> **API** on a desktop browser, request a free **Developer (non-commercial)** API key, set `TMDB_API_KEY=<key>` in `.env`, and run `python scripts/fetch_tmdb_metadata.py`. Full details are documented in [data/README.md](data/README.md).
+
+### Attributions and Policies
+- Raw MovieLens files (`ml-100k/` and `data/raw/`) and enriched metadata (`data/processed/tmdb_metadata.json`) are gitignored and not redistributed here. Cite Harper and Konstan (2015), _The MovieLens Datasets: History and Context_, ACM TiiS.
+- *This product uses the TMDB API but is not endorsed or certified by TMDB.* Visit [https://www.themoviedb.org](https://www.themoviedb.org).
+- `artifacts/cache/llm_cache.sqlite` is created locally when running `evaluate_llm.py` and is excluded from version control because it stores MovieLens histories and TMDB plots inside cached prompts.
 
 ## Installation
 
@@ -260,13 +267,17 @@ After completing [Installation](#installation) and [API Configuration](#api-conf
 
 ### 1. Data Preparation and TMDB Enrichment
 
-If MovieLens 100K is already downloaded at `./ml-100k`, skip `download_data.py` and pass `--data-dir ml-100k` to `prepare_data.py`:
+Retrieve MovieLens 100K and fetch TMDB metadata locally (see [data/README.md](data/README.md) for full instructions):
 
-```bash
-python scripts/download_data.py
-python scripts/prepare_data.py --data-dir data/raw/ml-100k
-python scripts/fetch_tmdb_metadata.py
-```
+1. **MovieLens 100K**: Download and extract the official archive into `data/raw/ml-100k` (or manually from [GroupLens](https://grouplens.org/datasets/movielens/100k/)) and build chronological splits:
+   ```bash
+   python scripts/download_data.py
+   python scripts/prepare_data.py --data-dir data/raw/ml-100k
+   ```
+2. **TMDB Metadata**: Register at [The Movie Database](https://www.themoviedb.org), verify your email, request a free Developer API key under **Settings** -> **API**, set `TMDB_API_KEY` in `.env`, and populate local cache:
+   ```bash
+   python scripts/fetch_tmdb_metadata.py
+   ```
 
 ### 2. Stage 1: Classical Baselines and Hybrid Model
 
@@ -348,9 +359,9 @@ The test suite verifies MovieLens parsing, chronological splits, leakage guards,
 | Path                               | Contents                                                                                                      |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `configs/default.yaml`             | Central hyperparameters, split rules, and LLM defaults                                                        |
-| `data/processed/`                  | Cleaned ratings, movies, genre matrix, splits, `tmdb_metadata.json`                                           |
+| `data/processed/`                  | Split metadata (`split_summary.json`, `genre_names.json`); full splits and `tmdb_metadata.json` generated locally |
 | `artifacts/models/`                | Popularity stats, genre matrix, `mf.pt`, selected `alpha`, run metadata                                       |
-| `artifacts/cache/llm_cache.sqlite` | SQLite response cache keyed by model and prompt hash (no API keys)                                            |
+| `artifacts/cache/llm_cache.sqlite` | Local SQLite response cache created on demand during evaluation (gitignored)                                  |
 | `artifacts/metrics/`               | Model tables, `llm_comparison.json`, `llm_ablations.csv`, `manual_audit_explanations.csv`, `results_table.md` |
 | `artifacts/plots/`                 | Data distributions, MF curves, alpha sweep, bucket analysis, rank displacement charts                         |
 
